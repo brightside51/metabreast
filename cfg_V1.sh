@@ -8,4 +8,4 @@
 #SBATCH --qos=gpu_min11GB                   # (Optional) 01.ctm-deep-05
 
 #Commands / scripts to run (e.g., python3 train.py)
-python3 main.py
+python3 video_diffusion_main.py
