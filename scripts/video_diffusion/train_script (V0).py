@@ -72,7 +72,6 @@ class Trainer(object):
 
         self.reset_parameters()
         self.train_logger = TensorBoardLogger(results_folder, 'train')
-        self.train_writer = SummaryWriter()
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -146,24 +145,21 @@ class Trainer(object):
             if self.step % 1000 == 0: self.save(run)
             print('saving model')
 
-            if self.step != 0 and self.step % self.save_and_sample_every == 0:
-                milestone = self.step // self.save_and_sample_every
-                num_samples = self.num_sample_rows ** 2
-                batches = num_to_groups(num_samples, self.batch_size)
-            
-                all_videos_list = list(map(lambda n: self.ema_model.sample(batch_size=n), batches))
-                all_videos_list = torch.cat(all_videos_list, dim = 0)
-            
-                all_videos_list = F.pad(all_videos_list, (2, 2, 2, 2))
-            
-                #one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.num_sample_rows)
-                #video_path = str(self.results_folder / str(f'{milestone}.gif'))
-                #video_tensor_to_gif(one_gif, video_path)
-                #log = {**log, 'sample': video_path}
-                print(all_videos_list.shape)
-
-                self.train_writer.add_video(milestone, all_videos_list[0], global_step=None, fps=4, walltime=None)
-                self.save(milestone)
+            #if self.step != 0 and self.step % self.save_and_sample_every == 0:
+            #    milestone = self.step // self.save_and_sample_every
+            #    num_samples = self.num_sample_rows ** 2
+            #    batches = num_to_groups(num_samples, self.batch_size)
+            #
+            #    all_videos_list = list(map(lambda n: self.ema_model.sample(batch_size=n), batches))
+            #    all_videos_list = torch.cat(all_videos_list, dim = 0)
+            #
+            #    all_videos_list = F.pad(all_videos_list, (2, 2, 2, 2))
+            #
+            #    one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.num_sample_rows)
+            #    video_path = str(self.results_folder / str(f'{milestone}.gif'))
+            #    video_tensor_to_gif(one_gif, video_path)
+            #    log = {**log, 'sample': video_path}
+            #    self.save(milestone)
 
             log_fn(log)
             self.step += 1

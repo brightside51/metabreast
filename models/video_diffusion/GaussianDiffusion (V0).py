@@ -21,6 +21,7 @@ class GaussianDiffusion(nn.Module):
         text_use_bert_cls = False,
         channels = 3,
         timesteps = 1000,
+        loss_type = 'l1',
         use_dynamic_thres = False, # from the Imagen paper
         dynamic_thres_percentile = 0.9
     ):
@@ -38,6 +39,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
+        self.loss_type = loss_type
 
         # register buffer helper function that casts float64 to float32
 
@@ -190,10 +192,14 @@ class GaussianDiffusion(nn.Module):
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
 
-        l1_loss = F.l1_loss(noise, x_recon)
-        mse_loss = F.mse_loss(noise, x_recon)
+        if self.loss_type == 'l1':
+            loss = F.l1_loss(noise, x_recon)
+        elif self.loss_type == 'l2':
+            loss = F.mse_loss(noise, x_recon)
+        else:
+            raise NotImplementedError()
 
-        return mse_loss
+        return loss
 
     def forward(self, x, *args, **kwargs):
         b, device, img_size, = x.shape[0], x.device, self.image_size

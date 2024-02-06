@@ -20,35 +20,44 @@ from torch.utils.data import ConcatDataset
 if True:
     ncdiff_parser = argparse.ArgumentParser(
         description = "Non-Conditional 3D Diffusion Model")
-    ncdiff_parser.add_argument('--model_version', type = int,               # Model Version Index
+    ncdiff_parser.add_argument('--model_type', type = str,            # Chosen Model / Diffusion
+                                choices =  {'video_diffusion',
+                                            'blackout_diffusion',
+                                            'gamma_diffusion'},
+                                default = 'video_diffusion')
+    ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 0)
-    ncdiff_parser.add_argument('--data_version', type = int,                # Dataset Version Index
+    ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
                                 default = 0)
+    settings = ncdiff_parser.parse_args("")
 
-    # Directory | Dataset-Related Path Arguments
-    ncdiff_parser.add_argument('--reader_folderpath', type = str,      # Path for Dataset Reader Directory
-                                default = 'data')
-    ncdiff_parser.add_argument('--public_data_folderpath', type = str,      # Path for Private Dataset Directory
-                                default = '../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1')
-    ncdiff_parser.add_argument('--private_data_folderpath', type = str,     # Path for Private Dataset Directory
-                                default = '../../../datasets/private/METABREST/T1W_Breast')
-    
+    # ============================================================================================
+
+    # Directories and Path Arguments
+    ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
+                                default = 'data/non_cond')
+    ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
+                                default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                #default = "../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+    ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
+                                default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                #default = '../../datasets/private/METABREST/T1W_Breast')
+
     # Directory | Model-Related Path Arguments
-    ncdiff_parser.add_argument('--model_folderpath', type = str,            # Path for Model Architecture Directory
-                                default = 'models')
-    ncdiff_parser.add_argument('--script_folderpath', type = str,           # Path for Model Training & Testing Scripts Directory
-                                default = 'scripts')
-    ncdiff_parser.add_argument('--logs_folderpath', type = str,             # Path for Model Saving Directory
-                                default = 'logs')
-    
-    
-    # --------------------------------------------------------------------------------------------
+    ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
+                                default = f'models/{settings.model_type}')
+    ncdiff_parser.add_argument('--script_folderpath', type = str,         # Path for Model Training & Testing Scripts Directory
+                                default = f'scripts/{settings.model_type}')
+    ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
+                                default = f'logs/{settings.model_type}')
+        
+    # ============================================================================================
 
     # Dataset | Dataset General Arguments
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
-                                default = 10)
+                                default = 30)
     ncdiff_parser.add_argument('--data_prep', type = bool,            # Usage of Dataset Pre-Processing Control Value
                                 default = True)
     ncdiff_parser.add_argument('--h_flip', type = int,                # Percentage of Horizontally Flipped Subjects
@@ -56,7 +65,7 @@ if True:
 
     # Dataset | Dataset Splitting Arguments
     ncdiff_parser.add_argument('--train_subj', type = int,            # Number of Random Subjects in Training Set
-                                default = 20)
+                                default = 20)                         # PS: Input 0 for all Subjects in the Dataset
     ncdiff_parser.add_argument('--val_subj', type = int,              # Number of Random Subjects in Validation Set
                                 default = 0)
     ncdiff_parser.add_argument('--test_subj', type = int,             # Number of Random Subjects in Test Set
@@ -64,13 +73,13 @@ if True:
 
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
-                                default = 5)
+                                default = 1)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = False)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
                                 default = 12)
 
-    # --------------------------------------------------------------------------------------------
+    # ============================================================================================
 
     # Model | Architecture-Defining Arguments
     ncdiff_parser.add_argument('--seed', type = int,                  # Randomised Generational Seed
@@ -91,6 +100,10 @@ if True:
                                 default = 10000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-3)
+    ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
+                                default = 1000)
+
+    # ============================================================================================
 
     settings = ncdiff_parser.parse_args("")
     settings.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
@@ -140,12 +153,13 @@ diff_summary = summary(     diff,
                             settings.num_slice,
                             settings.img_size,
                             settings.img_size))
+"""
 
 # Model Trainer Initialization
 trainer = Trainer(  diff, private_dataset,
                     train_batch_size = settings.batch_size,
                     train_lr = settings.lr_base,
-                    save_and_sample_every = 500,
+                    save_and_sample_every = settings.save_interval,
                     train_num_steps = settings.num_steps,
                     gradient_accumulate_every = 2,
                     ema_decay = 0.995, amp = True,
@@ -156,18 +170,19 @@ time_start = time.time()
 trainer.train(run = f'save_V{settings.model_version}')
 time_end = time.time()
 print(f"Time Duration: {(time_end - time_start) / 60}")
-"""
 
 # ============================================================================================
 # ====================================== Inference Setup =====================================
 # ============================================================================================
 
+"""
 # Model Inference Mode
 infer = Inferencer( diff,
                     model_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/model-save_V{settings.model_version}.pt"),
                     output_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/gen_img"),
                     num_samples = 20, img_size = settings.img_size, num_slice = settings.num_slice)
 infer.infer_new_data()
+"""
 
 # Running Commands
 #srun -p debug_8GB -q debug_8GB python video_diffusion_main.py
