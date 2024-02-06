@@ -1,5 +1,5 @@
 #!/bin/bash
-#
+
 #SBATCH --partition=gpu_min11GB             # Partition (check with "$sinfo")
 #SBATCH --output=fid_output.out         # Filename with STDOUT. You can use special flags, such as %N and %j.
 #SBATCH --error=fid_error.out           # (Optional) Filename with STDERR. If ommited, use STDOUT.
