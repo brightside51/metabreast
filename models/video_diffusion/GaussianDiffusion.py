@@ -1,5 +1,6 @@
 '''GaussianDiffusion model based on https://github.com/lucidrains/video-diffusion-pytorch/'''
 
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +10,11 @@ from einops import rearrange
 from tqdm import tqdm
 
 from einops_exts import check_shape
-
+from skimage.metrics import peak_signal_noise_ratio as PSNR
+from skimage.metrics import normalized_mutual_information as NMI
+sys.path.append('../../eval')
+from ssim3d_metric import ssim3D
+from dice_metric import mean_dice_score
 
 class GaussianDiffusion(nn.Module):
     def __init__(
@@ -174,13 +179,14 @@ class GaussianDiffusion(nn.Module):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         return (
-            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
-            extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+            extract(self.sqrt_alphas_cumprod.to(x_start.device), t, x_start.shape) * x_start +
+            extract(self.sqrt_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape) * noise
         )
 
+    def update_fid(self, fid_metric): self.fid_metric = fid_metric
     def p_losses(self, x_start, t, cond = None, noise = None, **kwargs):
         b, c, f, h, w, device = *x_start.shape, x_start.device
-        noise = default(noise, lambda: torch.randn_like(x_start))
+        noise = default(noise, lambda: torch.randn_like(x_start)).to(device)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
 
@@ -189,11 +195,22 @@ class GaussianDiffusion(nn.Module):
         #     cond = cond.to(device)
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
+        print(x_recon.device)
 
-        l1_loss = F.l1_loss(noise, x_recon)
-        mse_loss = F.mse_loss(noise, x_recon)
-
-        return mse_loss
+        # Metric Computation
+        print(f"Dice Score: {mean_dice_score(noise.cpu(), x_recon.cpu())}")
+        print(f"SSIM Index: {ssim3D(noise.unsqueeze(0).cpu(), x_recon.unsqueeze(0).cpu())}")
+        print(noise.shape); print(x_recon.shape)
+        self.fid_metric.update(noise, real = True)
+        self.fid_metric.update(x_recon, real = False)
+        return {"L1 Loss": F.l1_loss(noise, x_recon),
+                "MSE Loss": F.mse_loss(noise, x_recon),
+                #"FID Score": self.fid_metric.compute(),
+                "Dice Score": mean_dice_score(  noise.cpu(), x_recon.cpu()),
+                "SSIM Index": ssim3D(   noise.unsqueeze(0).cpu(),
+                                        x_recon.unsqueeze(0).cpu()),
+                "PSNR Loss": PSNR(noise.numpy(), x_recon.numpy()),
+                "NMI Loss": NMI(noise.numpy(), x_recon.numpy())}
 
     def forward(self, x, *args, **kwargs):
         b, device, img_size, = x.shape[0], x.device, self.image_size

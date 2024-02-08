@@ -26,7 +26,7 @@ if True:
                                             'gamma_diffusion'},
                                 default = 'video_diffusion')
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
-                                default = 0)
+                                default = 1)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
                                 default = 0)
     settings = ncdiff_parser.parse_args("")
@@ -35,21 +35,21 @@ if True:
 
     # Directories and Path Arguments
     ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
-                                default = 'data/non_cond')
+                                default = '../../data/non_cond')
     ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
-                                default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
-                                #default = "../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                #default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
     ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
-                                default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
-                                #default = '../../datasets/private/METABREST/T1W_Breast')
+                                #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                default = '../../../../../datasets/private/METABREST/T1W_Breast')
 
     # Directory | Model-Related Path Arguments
     ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
-                                default = f'models/{settings.model_type}')
+                                default = f'../../models/{settings.model_type}')
     ncdiff_parser.add_argument('--script_folderpath', type = str,         # Path for Model Training & Testing Scripts Directory
-                                default = f'scripts/{settings.model_type}')
+                                default = f'../../scripts/{settings.model_type}')
     ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
-                                default = f'logs/{settings.model_type}')
+                                default = f'../../logs/{settings.model_type}')
         
     # ============================================================================================
 
@@ -75,7 +75,7 @@ if True:
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
                                 default = 1)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
-                                default = False)
+                                default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
                                 default = 12)
 
@@ -97,16 +97,16 @@ if True:
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
                                 default = 300)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 10000)
+                                default = 100000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
-                                default = 1e-3)
+                                default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 1000)
+                                default = 10)
 
     # ============================================================================================
 
     settings = ncdiff_parser.parse_args("")
-    settings.device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+    settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 # --------------------------------------------------------------------------------------------
 
@@ -117,8 +117,8 @@ sys.path.append(settings.model_folderpath)
 from Unet3D import Unet3D
 from GaussianDiffusion import GaussianDiffusion
 sys.path.append(settings.script_folderpath)
-from video_diffusion_infer import Inferencer
-from video_diffusion_train import Trainer
+from infer_script import Inferencer
+from train_script import Trainer
 
 # ============================================================================================
 # ====================================== Training Setup ======================================
@@ -143,8 +143,7 @@ diff = GaussianDiffusion(   model,
                             image_size = settings.img_size,
                             num_frames = settings.num_slice,
                             channels = settings.num_channel,
-                            timesteps = settings.num_ts,
-                            loss_type = 'l1')
+                            timesteps = settings.num_ts)
 
 # Diffusion Application
 """
@@ -157,6 +156,8 @@ diff_summary = summary(     diff,
 
 # Model Trainer Initialization
 trainer = Trainer(  diff, private_dataset,
+                    device = settings.device,
+                    shuffle = settings.shuffle,
                     train_batch_size = settings.batch_size,
                     train_lr = settings.lr_base,
                     save_and_sample_every = settings.save_interval,

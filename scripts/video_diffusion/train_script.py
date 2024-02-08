@@ -5,13 +5,14 @@ from torch.optim import Adam
 from torch.utils import data
 from torch.cuda.amp import autocast, GradScaler
 from pytorch_lightning.loggers import TensorBoardLogger
+from torch.utils.tensorboard import SummaryWriter
 from torch import nn
 import torch.nn.functional as F
 
 from util.util import *
 from pathlib import Path
 from einops import rearrange
-
+from torchmetrics.image.fid import FrechetInceptionDistance as FID
 
 ### Training class
 class Trainer(object):
@@ -19,7 +20,9 @@ class Trainer(object):
         self,
         diffusion_model,
         dataset,
+        device,
         *,
+        shuffle: bool = False,
         ema_decay = 0.995,
         num_frames = 16,
         train_batch_size = 32,
@@ -35,7 +38,7 @@ class Trainer(object):
         max_grad_norm = None
     ):
         super().__init__()
-        self.model = diffusion_model
+        self.model = diffusion_model.to(device)
         self.ema = EMA(ema_decay)
         self.ema_model = copy.deepcopy(self.model)
         self.update_ema_every = update_ema_every
@@ -57,7 +60,7 @@ class Trainer(object):
         print(f'training using {len(self.ds)} cases')
         assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
 
-        self.dl = cycle(data.DataLoader(self.ds, batch_size = train_batch_size, shuffle=True, pin_memory=True))
+        self.dl = cycle(data.DataLoader(self.ds, batch_size = train_batch_size, shuffle=shuffle, pin_memory=True))
         self.opt = Adam(diffusion_model.parameters(), lr = train_lr)
 
         self.step = 0
@@ -71,7 +74,10 @@ class Trainer(object):
         self.results_folder.mkdir(exist_ok = True, parents = True)
 
         self.reset_parameters()
+        self.fid_metric = FID(feature = 64)
+        self.model.update_fid(self.fid_metric)
         self.train_logger = TensorBoardLogger(results_folder, 'train')
+        self.eval_logger = TensorBoardLogger(results_folder, 'eval')
         self.train_writer = SummaryWriter()
 
     def reset_parameters(self):
@@ -88,7 +94,8 @@ class Trainer(object):
             'step': self.step,
             'model': self.model.state_dict(),
             'ema': self.ema_model.state_dict(),
-            'scaler': self.scaler.state_dict()
+            'scaler': self.scaler.state_dict(),
+            'fid_metric': self.fid_metric,
         }
         torch.save(data, str(self.results_folder / f'model-{run}.pt'))
 
@@ -104,6 +111,7 @@ class Trainer(object):
         self.model.load_state_dict(data['model'], **kwargs)
         self.ema_model.load_state_dict(data['ema'], **kwargs)
         self.scaler.load_state_dict(data['scaler'])
+        self.fid_metrid = data['fid_metric']
 
     def train(
         self,
@@ -125,12 +133,17 @@ class Trainer(object):
                         focus_present_mask = focus_present_mask
                     )
 
-                    self.scaler.scale(loss / self.gradient_accumulate_every).backward()
+                    self.scaler.scale(loss['MSE Loss'] / self.gradient_accumulate_every).backward()
 
-                #print(f'{self.step}: {loss.item()}')
-                self.train_logger.experiment.add_scalar("Step Loss", loss.item(), self.step)
+                self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), self.step)
+                self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), self.step)
+                #self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), self.step)
+                self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"].item(), self.step)
+                self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), self.step)
+                self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), self.step)
+                self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), self.step)
 
-            log = {'loss': loss.item()}
+            log = {'loss': loss['MSE Loss'].item()}
 
             if exists(self.max_grad_norm):
                 self.scaler.unscale_(self.opt)

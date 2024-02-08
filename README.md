@@ -23,6 +23,8 @@
 - Comparative State-of-the-Art Models
     - 3D Generative Adversarial Network
     - 3D Normalizing Flow
+- Diffusion-Trained GAN / Adversarially-Trained Diffusion Model
+fdjiaudiwa
 
 ## Conditional Generation
 - Vector-Quantized Diffusion Model
