@@ -13,7 +13,7 @@ from einops_exts import check_shape
 from skimage.metrics import peak_signal_noise_ratio as PSNR
 from skimage.metrics import normalized_mutual_information as NMI
 sys.path.append('../../eval')
-from ssim3d_metric import ssim3D
+from ssim3d_metric import SSIM3D
 from dice_metric import mean_dice_score
 
 class GaussianDiffusion(nn.Module):
@@ -43,6 +43,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
+        self.ssim_metric = SSIM3D(window_size = 3)
 
         # register buffer helper function that casts float64 to float32
 
@@ -186,6 +187,7 @@ class GaussianDiffusion(nn.Module):
     def update_fid(self, fid_metric): self.fid_metric = fid_metric
     def p_losses(self, x_start, t, cond = None, noise = None, **kwargs):
         b, c, f, h, w, device = *x_start.shape, x_start.device
+        self.ssim_metric = self.ssim_metric.to(device)
         noise = default(noise, lambda: torch.randn_like(x_start)).to(device)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
@@ -195,22 +197,24 @@ class GaussianDiffusion(nn.Module):
         #     cond = cond.to(device)
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
-        print(x_recon.device)
 
         # Metric Computation
-        print(f"Dice Score: {mean_dice_score(noise.cpu(), x_recon.cpu())}")
-        print(f"SSIM Index: {ssim3D(noise.unsqueeze(0).cpu(), x_recon.unsqueeze(0).cpu())}")
-        print(noise.shape); print(x_recon.shape)
-        self.fid_metric.update(noise, real = True)
-        self.fid_metric.update(x_recon, real = False)
+        norm_noise = noise[0] - noise[0].min(1, keepdim = True)[0]
+        norm_noise /= norm_noise.max(1, keepdim = True)[0]
+        norm_recon = x_recon[0] - x_recon[0].min(1, keepdim = True)[0]
+        norm_recon /= norm_recon.max(1, keepdim = True)[0]
+        #self.fid_metric.update(torch.Tensor(noise, dtype = torch.uint8), real = True)
+        #self.fid_metric.update(torch.Tensor(x_recon, dtype = torch.uint8), real = False)
         return {"L1 Loss": F.l1_loss(noise, x_recon),
                 "MSE Loss": F.mse_loss(noise, x_recon),
                 #"FID Score": self.fid_metric.compute(),
-                "Dice Score": mean_dice_score(  noise.cpu(), x_recon.cpu()),
-                "SSIM Index": ssim3D(   noise.unsqueeze(0).cpu(),
-                                        x_recon.unsqueeze(0).cpu()),
-                "PSNR Loss": PSNR(noise.numpy(), x_recon.numpy()),
-                "NMI Loss": NMI(noise.numpy(), x_recon.numpy())}
+                "Dice Score": mean_dice_score(  noise.detach().cpu(),
+                                                x_recon.detach().cpu()),
+                "SSIM Index": self.ssim_metric( noise, x_recon),
+                "PSNR Loss": PSNR(  norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy()),
+                "NMI Loss": NMI(    norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy())}
 
     def forward(self, x, *args, **kwargs):
         b, device, img_size, = x.shape[0], x.device, self.image_size

@@ -6,12 +6,13 @@ import pathlib
 import argparse
 import numpy as np
 import torch
-from torchinfo import summary
+import tensorboard
 import matplotlib.pyplot as plt
 import time
 
 # Functionality Imports
 from pathlib import Path
+from torchinfo import summary
 from torch.utils.data import ConcatDataset
 
 # ============================================================================================
@@ -73,7 +74,7 @@ if True:
 
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
-                                default = 1)
+                                default = 2)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
@@ -101,7 +102,9 @@ if True:
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 10)
+                                default = 1)
+    ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
+                                default = 1)
 
     # ============================================================================================
 
@@ -164,6 +167,7 @@ trainer = Trainer(  diff, private_dataset,
                     train_num_steps = settings.num_steps,
                     gradient_accumulate_every = 2,
                     ema_decay = 0.995, amp = True,
+                    num_sample_rows = settings.save_img,
                     results_folder = f"{settings.logs_folderpath}/V{settings.model_version}")
 
 # Model Trainer Application
