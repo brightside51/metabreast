@@ -1,4 +1,3 @@
-
 # Package Imports
 import os
 import sys
@@ -128,6 +127,7 @@ from train_script import Trainer
 # ============================================================================================
 
 # Dataset Access
+
 private_dataset = NCDataset(settings,
                             mode = 'train',
                             dataset = 'private')

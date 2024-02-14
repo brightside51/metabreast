@@ -201,10 +201,9 @@ class GaussianDiffusion(nn.Module):
         norm_noise = noise[0] - noise[0].min(1, keepdim = True)[0]
         norm_noise /= norm_noise.max(1, keepdim = True)[0]
         norm_recon = x_recon[0] - x_recon[0].min(1, keepdim = True)[0]
-        norm_recon /= norm_recon.max(1, keepdim = True)[0]
+        norm_recon /= torch.Tensor(norm_recon.max(1, keepdim = True)[0], dtype = torch.float32)
         #self.fid_metric.update(torch.Tensor(noise, dtype = torch.uint8), real = True)
         #self.fid_metric.update(torch.Tensor(x_recon, dtype = torch.uint8), real = False)
-        print(norm_noise.dtype); print(norm_recon.dtype)
         return {"L1 Loss": F.l1_loss(noise, x_recon),
                 "MSE Loss": F.mse_loss(noise, x_recon),
                 #"FID Score": self.fid_metric.compute(),
