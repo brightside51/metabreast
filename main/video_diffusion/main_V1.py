@@ -29,7 +29,7 @@ if True:
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 1)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
-                                default = 0)
+                                default = 1)
     settings = ncdiff_parser.parse_args("")
 
     # ============================================================================================
@@ -66,7 +66,7 @@ if True:
 
     # Dataset | Dataset Splitting Arguments
     ncdiff_parser.add_argument('--train_subj', type = int,            # Number of Random Subjects in Training Set
-                                default = 20)                         # PS: Input 0 for all Subjects in the Dataset
+                                default = 0)                          # PS: Input 0 for all Subjects in the Dataset
     ncdiff_parser.add_argument('--val_subj', type = int,              # Number of Random Subjects in Validation Set
                                 default = 0)
     ncdiff_parser.add_argument('--test_subj', type = int,             # Number of Random Subjects in Test Set
@@ -74,7 +74,7 @@ if True:
 
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
-                                default = 2)
+                                default = 1)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
@@ -98,13 +98,13 @@ if True:
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
                                 default = 300)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 100000)
+                                default = 500000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 1)
+                                default = 10)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
-                                default = 1)
+                                default = 2)
 
     # ============================================================================================
 
@@ -159,6 +159,7 @@ diff_summary = summary(     diff,
 
 # Model Trainer Initialization
 trainer = Trainer(  diff, private_dataset,
+                    settings = settings,
                     device = settings.device,
                     shuffle = settings.shuffle,
                     train_batch_size = settings.batch_size,

@@ -1,5 +1,6 @@
 '''GaussianDiffusion model based on https://github.com/lucidrains/video-diffusion-pytorch/'''
 
+import sys
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,7 +10,11 @@ from einops import rearrange
 from tqdm import tqdm
 
 from einops_exts import check_shape
-
+from skimage.metrics import peak_signal_noise_ratio as PSNR
+from skimage.metrics import normalized_mutual_information as NMI
+sys.path.append('../../eval')
+from ssim3d_metric import SSIM3D
+from dice_metric import mean_dice_score
 
 class GaussianDiffusion(nn.Module):
     def __init__(
@@ -21,7 +26,6 @@ class GaussianDiffusion(nn.Module):
         text_use_bert_cls = False,
         channels = 3,
         timesteps = 1000,
-        loss_type = 'l1',
         use_dynamic_thres = False, # from the Imagen paper
         dynamic_thres_percentile = 0.9
     ):
@@ -39,7 +43,6 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.loss_type = loss_type
 
         # register buffer helper function that casts float64 to float32
 
@@ -176,13 +179,15 @@ class GaussianDiffusion(nn.Module):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         return (
-            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
-            extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+            extract(self.sqrt_alphas_cumprod.to(x_start.device), t, x_start.shape) * x_start +
+            extract(self.sqrt_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape) * noise
         )
 
+    def update_fid(self, fid_metric): self.fid_metric = fid_metric
     def p_losses(self, x_start, t, cond = None, noise = None, **kwargs):
         b, c, f, h, w, device = *x_start.shape, x_start.device
-        noise = default(noise, lambda: torch.randn_like(x_start))
+        noise = default(noise, lambda: torch.randn_like(x_start)).to(device)
+        self.ssim_metric = SSIM3D(window_size = 3).to(device)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
 
@@ -192,14 +197,23 @@ class GaussianDiffusion(nn.Module):
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
 
-        if self.loss_type == 'l1':
-            loss = F.l1_loss(noise, x_recon)
-        elif self.loss_type == 'l2':
-            loss = F.mse_loss(noise, x_recon)
-        else:
-            raise NotImplementedError()
-
-        return loss
+        # Metric Computation
+        norm_noise = noise[0] - noise[0].min(1, keepdim = True)[0]
+        norm_noise /= norm_noise.max(1, keepdim = True)[0]
+        norm_recon = x_recon[0] - x_recon[0].min(1, keepdim = True)[0]
+        norm_recon /= norm_recon.max(1, keepdim = True)[0]
+        #self.fid_metric.update(torch.Tensor(noise, dtype = torch.uint8), real = True)
+        #self.fid_metric.update(torch.Tensor(x_recon, dtype = torch.uint8), real = False)
+        return {"L1 Loss": F.l1_loss(noise, x_recon),
+                "MSE Loss": F.mse_loss(noise, x_recon),
+                #"FID Score": self.fid_metric.compute(),
+                "Dice Score": mean_dice_score(  noise.detach().cpu(),
+                                                x_recon.detach().cpu()),
+                "SSIM Index": self.ssim_metric( noise, x_recon),
+                "PSNR Loss": PSNR(  norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy()),
+                "NMI Loss": NMI(    norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy())}
 
     def forward(self, x, *args, **kwargs):
         b, device, img_size, = x.shape[0], x.device, self.image_size

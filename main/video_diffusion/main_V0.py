@@ -26,20 +26,22 @@ if True:
                                 default = 0)
 
     # Directory | Dataset-Related Path Arguments
-    ncdiff_parser.add_argument('--reader_folderpath', type = str,      # Path for Dataset Reader Directory
-                                default = 'data')
-    ncdiff_parser.add_argument('--public_data_folderpath', type = str,      # Path for Private Dataset Directory
-                                default = '../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1')
-    ncdiff_parser.add_argument('--private_data_folderpath', type = str,     # Path for Private Dataset Directory
-                                default = '../../../datasets/private/METABREST/T1W_Breast')
+    ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
+                                default = '../../data/non_cond')
+    ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
+                                #default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+    ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
+                                #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                default = '../../../../../datasets/private/METABREST/T1W_Breast')
     
     # Directory | Model-Related Path Arguments
-    ncdiff_parser.add_argument('--model_folderpath', type = str,            # Path for Model Architecture Directory
-                                default = 'models/video_diffusion')
-    ncdiff_parser.add_argument('--script_folderpath', type = str,           # Path for Model Training & Testing Scripts Directory
-                                default = 'scripts')
-    ncdiff_parser.add_argument('--logs_folderpath', type = str,             # Path for Model Saving Directory
-                                default = 'logs')
+    ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
+                                default = f'../../models/{settings.model_type}')
+    ncdiff_parser.add_argument('--script_folderpath', type = str,         # Path for Model Training & Testing Scripts Directory
+                                default = f'../../scripts/{settings.model_type}')
+    ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
+                                default = f'../../logs/{settings.model_type}')
     
     
     # --------------------------------------------------------------------------------------------
@@ -64,7 +66,7 @@ if True:
 
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
-                                default = 5)
+                                default = 2)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = False)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
@@ -142,6 +144,7 @@ diff_summary = summary(     diff,
                             settings.num_slice,
                             settings.img_size,
                             settings.img_size))
+"""
 
 # Model Trainer Initialization
 trainer = Trainer(  diff, private_dataset,
@@ -158,18 +161,19 @@ time_start = time.time()
 trainer.train(run = f'save_V{settings.model_version}')
 time_end = time.time()
 print(f"Time Duration: {(time_end - time_start) / 60}")
-"""
 
 # ============================================================================================
 # ====================================== Inference Setup =====================================
 # ============================================================================================
 
+"""
 # Model Inference Mode
 infer = Inferencer( diff,
                     model_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/model-save_V{settings.model_version}.pt"),
                     output_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/gen_img"),
                     num_samples = 20, img_size = settings.img_size, num_slice = settings.num_slice)
 infer.infer_new_data()
+"""
 
 # Running Commands
 #srun -p debug_8GB -q debug_8GB python video_diffusion_main.py

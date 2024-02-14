@@ -65,24 +65,27 @@ class NCDataset(Dataset):
     def subj_split(self, subj_list: list):
 
         # Dataset Splitting
-        assert 0 < (self.settings.train_subj + self.settings.val_subj + self.settings.test_subj) <= len(subj_list),\
-               f"ERROR: Dataset does not contain {self.settings.train_subj + self.settings.val_subj + self.settings.test_subj} Subjects!"
-        train_subj = np.sort(np.array(random.sample(subj_list, self.settings.train_subj), dtype = 'str'))
-        subj_list = [subj for subj in subj_list if subj not in train_subj]                                  # Training Set Splitting
-        val_subj = np.sort(np.array(random.sample(subj_list, self.settings.val_subj), dtype = 'str'))
-        subj_list = [subj for subj in subj_list if subj not in val_subj]                                    # Validation Set Splitting
-        test_subj = np.sort(np.array(random.sample(subj_list, self.settings.test_subj), dtype = 'str'))
-        subj_list = [subj for subj in subj_list if subj not in test_subj]                                   # Test Set Splitting
-        subj_list = np.sort(np.array(subj_list, dtype = 'str'))
-        assert len(subj_list) + self.settings.train_subj + self.settings.val_subj + self.settings.test_subj == len(self.subj_list),\
+        train_subj = len(subj_list) if self.settings.train_subj == 0 else self.settings.train_subj
+        assert 0 < (train_subj + self.settings.val_subj + self.settings.test_subj) <= len(subj_list),\
+               f"ERROR: Dataset does not contain {train_subj + self.settings.val_subj + self.settings.test_subj} Subjects!"
+        train_subj = np.sort(np.array(random.sample(subj_list, train_subj), dtype = 'str'))
+        subj_list = [subj for subj in subj_list if subj not in train_subj]                                      # Training Set Splitting
+        if self.settings.train_subj != 0:
+            val_subj = np.sort(np.array(random.sample(subj_list, self.settings.val_subj), dtype = 'str'))
+            subj_list = [subj for subj in subj_list if subj not in val_subj]                                    # Validation Set Splitting
+            test_subj = np.sort(np.array(random.sample(subj_list, self.settings.test_subj), dtype = 'str'))
+            subj_list = [subj for subj in subj_list if subj not in test_subj]                                   # Test Set Splitting
+            subj_list = np.sort(np.array(subj_list, dtype = 'str'))
+        assert len(subj_list) + len(train_subj) + self.settings.val_subj + self.settings.test_subj == len(self.subj_list),\
                f"ERROR: Dataset Splitting went Wrong!"
 
         # Dataset Split Saving
         if not os.path.isdir(f"V{self.settings.data_version}"): os.mkdir(f"V{self.settings.data_version}")
         if len(train_subj) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_train_setV{self.settings.data_version}.txt", train_subj, fmt='%s')
-        if len(val_subj) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_val_setV{self.settings.data_version}.txt", val_subj, fmt='%s')
-        if len(test_subj) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_test_setV{self.settings.data_version}.txt", test_subj, fmt='%s')
-        if len(subj_list) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_rest_set (V{self.settings.data_version}).txt", subj_list, fmt='%s')
+        if len(subj_list) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_rest_setV{self.settings.data_version}.txt", subj_list, fmt='%s')
+        if self.settings.train_subj != 0:
+            if len(val_subj) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_val_setV{self.settings.data_version}.txt", val_subj, fmt='%s')
+            if len(test_subj) != 0: np.savetxt(f"V{self.settings.data_version}/{self.dataset}_test_setV{self.settings.data_version}.txt", test_subj, fmt='%s')
         
     # ============================================================================================
         
