@@ -98,11 +98,11 @@ if True:
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
                                 default = 300)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 500000)
+                                default = 1000)#500000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 10)
+                                default = 100)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
 

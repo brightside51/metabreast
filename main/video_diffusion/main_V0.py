@@ -20,10 +20,16 @@ from torch.utils.data import ConcatDataset
 if True:
     ncdiff_parser = argparse.ArgumentParser(
         description = "Non-Conditional 3D Diffusion Model")
+    ncdiff_parser.add_argument('--model_type', type = str,            # Chosen Model / Diffusion
+                                choices =  {'video_diffusion',
+                                            'blackout_diffusion',
+                                            'gamma_diffusion'},
+                                default = 'video_diffusion')
     ncdiff_parser.add_argument('--model_version', type = int,               # Model Version Index
                                 default = 0)
     ncdiff_parser.add_argument('--data_version', type = int,                # Dataset Version Index
                                 default = 0)
+    settings = ncdiff_parser.parse_args("")
 
     # Directory | Dataset-Related Path Arguments
     ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
@@ -108,8 +114,8 @@ sys.path.append(settings.model_folderpath)
 from Unet3D import Unet3D
 from GaussianDiffusion import GaussianDiffusion
 sys.path.append(settings.script_folderpath)
-from video_diffusion_infer import Inferencer
-from video_diffusion_train import Trainer
+from infer_script import Inferencer
+from train_script import Trainer
 
 # ============================================================================================
 # ====================================== Training Setup ======================================
