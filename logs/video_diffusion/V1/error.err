@@ -1,0 +1,3 @@
+/nas-ctm01/homes/pfsousa/MetaBreast/main/video_diffusion/../../models/video_diffusion/GaussianDiffusion.py:213: UserWarning: Inputs have mismatched dtype.  Setting data_range based on image_true.
+  "PSNR Loss": PSNR(  norm_noise.detach().cpu().numpy(),
+slurmstepd-01.ctm-deep-04: error: *** JOB 5639 ON 01.ctm-deep-04 CANCELLED AT 2024-02-16T15:25:15 ***

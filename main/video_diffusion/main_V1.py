@@ -2,6 +2,7 @@
 import os
 import sys
 import pathlib
+import wandb
 import argparse
 import numpy as np
 import torch
@@ -110,9 +111,17 @@ if True:
     settings = ncdiff_parser.parse_args("")
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
+wandb.init(
+    project="MetaBreast",
+    config={
+        "model_type": settings.model_type,
+        "model_version": settings.model_version,
+        "data_version": settings.data_version})
+
 # --------------------------------------------------------------------------------------------
 
 # Functionality Imports
+print(f"Video Diffusion Model | V{settings.model_version}")
 sys.path.append(settings.reader_folderpath)
 from nc_data_reader import NCDataset
 sys.path.append(settings.model_folderpath)
@@ -192,3 +201,4 @@ infer.infer_new_data()
 
 # Running Commands
 #srun -p debug_8GB -q debug_8GB python video_diffusion_main.py
+wandb.finish()

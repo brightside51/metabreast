@@ -128,6 +128,10 @@ class Trainer(object):
         while self.step < self.train_num_steps:
             for i in range(self.gradient_accumulate_every):
                 data = next(self.dl).cuda()
+                
+                #if self.step < self.num_batch:
+                #    for slice in range(data.shape[2]):
+                #        self.fid_metric.update(data[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = True)
 
                 with autocast(enabled = self.amp):
                     loss = self.model(
