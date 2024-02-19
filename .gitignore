@@ -6,3 +6,11 @@
 *.0
 *.db
 *.1
+*.json
+*.wandb
+*.yaml
+*.log
+*.out
+*.sh
+*.err
+**/main/video_diffusion/wandb

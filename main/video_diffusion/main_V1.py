@@ -78,7 +78,7 @@ if True:
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
-                                default = 12)
+                                default = 8)
 
     # ============================================================================================
 
@@ -98,11 +98,11 @@ if True:
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
                                 default = 300)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 1000)#500000)
+                                default = 500000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 100)
+                                default = 1000)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
 
@@ -110,13 +110,7 @@ if True:
 
     settings = ncdiff_parser.parse_args("")
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
-
-wandb.init(
-    project="MetaBreast",
-    config={
-        "model_type": settings.model_type,
-        "model_version": settings.model_version,
-        "data_version": settings.data_version})
+wandb.init( project = "MetaBreast", name = f"{settings.model_type}/V{settings.model_version}")
 
 # --------------------------------------------------------------------------------------------
 
@@ -167,8 +161,7 @@ diff_summary = summary(     diff,
 """
 
 # Model Trainer Initialization
-trainer = Trainer(  diff, private_dataset,
-                    settings = settings,
+trainer = Trainer(  diff, private_dataset, settings = settings,
                     device = settings.device,
                     shuffle = settings.shuffle,
                     train_batch_size = settings.batch_size,

@@ -1,5 +1,6 @@
 import torch
 import copy
+import wandb
 
 from torch.optim import Adam
 from torch.utils import data
@@ -76,10 +77,10 @@ class Trainer(object):
         self.results_folder.mkdir(exist_ok = True, parents = True)
 
         self.reset_parameters()
-        #self.fid_metric = FID(feature = 64)
+        self.fid_metric = FID(feature = 64)
         #self.model.update_fid(self.fid_metric)
-        self.train_logger = TensorBoardLogger(results_folder, 'train')
-        self.eval_logger = TensorBoardLogger(results_folder, 'eval')
+        #self.train_logger = TensorBoardLogger(results_folder, 'train')
+        #self.eval_logger = TensorBoardLogger(results_folder, 'eval')
         self.eval_writer = SummaryWriter(log_dir = f"{results_folder}/eval")
         print("training script initialized")
 
@@ -98,7 +99,7 @@ class Trainer(object):
             'model': self.model.state_dict(),
             'ema': self.ema_model.state_dict(),
             'scaler': self.scaler.state_dict(),
-            #'fid_metric': self.fid_metric,
+            'fid_metric': self.fid_metric,
         }
         torch.save(data, str(self.results_folder / f'model-{run}.pt'))
 
@@ -114,7 +115,7 @@ class Trainer(object):
         self.model.load_state_dict(data['model'], **kwargs)
         self.ema_model.load_state_dict(data['ema'], **kwargs)
         self.scaler.load_state_dict(data['scaler'])
-        #self.fid_metrid = data['fid_metric']
+        self.fid_metrid = data['fid_metric']
 
     def train(
         self,
@@ -129,9 +130,9 @@ class Trainer(object):
             for i in range(self.gradient_accumulate_every):
                 data = next(self.dl).cuda()
                 
-                #if self.step < self.num_batch:
-                #    for slice in range(data.shape[2]):
-                #        self.fid_metric.update(data[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = True)
+                if self.step < self.num_batch:
+                    for slice in range(data.shape[2]):
+                        self.fid_metric.update(data[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = True)
 
                 with autocast(enabled = self.amp):
                     loss = self.model(
@@ -142,13 +143,14 @@ class Trainer(object):
 
                     self.scaler.scale(loss['MSE Loss'] / self.gradient_accumulate_every).backward()
 
-            self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), self.step)
-            self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), self.step)
+            wandb.log(loss)
+            #self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), self.step)
+            #self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), self.step)
             #self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), self.step)
-            self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], self.step)
-            self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), self.step)
-            self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), self.step)
-            self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), self.step)
+            #self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], self.step)
+            #self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), self.step)
+            #self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), self.step)
+            #self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), self.step)
 
             log = {'loss': loss['MSE Loss'].item()}
 
@@ -179,19 +181,20 @@ class Trainer(object):
                 #log = {**log, 'sample': video_path}
                 
                 # Metric Comparisons
-                #for slice in range(sample3d.shape[2]):
+                for slice in range(sample3d.shape[2]):
                     #self.fid_metric.update(data[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = True)
-                    #self.fid_metric.update(sample3d[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = False)
+                    self.fid_metric.update(sample3d[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = False)
+                wandb.log({"FID Score": self.fid_metric.compute()})
                 #self.eval_logger.experiment.add_scalar("FID Score", self.fid_metric.compute(), milestone)
                 self.eval_writer.add_video('Generated Images', sample3d.swapaxes(1, 2).repeat(1, 1, 3, 1, 1),
                                                             global_step = milestone, fps = 4, walltime = None)
                 
                 # New Data Inferencing
-                #self.infer = Inferencer(self.model,
-                #                        model_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/model-save_V{self.settings.model_version}.pt"),
-                #                        output_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/gen_img"),
-                #                        num_samples = self.settings.save_img, img_size = self.settings.img_size, num_slice = self.settings.num_slice)
-                #self.infer.infer_new_data()
+                self.infer = Inferencer(self.model,
+                                        model_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/model-save_V{self.settings.model_version}.pt"),
+                                        output_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/gen_img"),
+                                        num_samples = self.settings.save_img, img_size = self.settings.img_size, num_slice = self.settings.num_slice)
+                self.infer.infer_new_data()
 
             log_fn(log)
             self.step += 1
