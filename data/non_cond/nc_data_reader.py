@@ -5,6 +5,7 @@ import argparse
 import numpy as np
 import pydicom
 import torch
+import torchvision
 import matplotlib.pyplot as plt
 
 # Function Imports
@@ -90,7 +91,7 @@ class NCDataset(Dataset):
     # ============================================================================================
         
     # Single Batch / Subject Generation Functionality
-    def __getitem__(self, idx: int = 0 or str):
+    def __getitem__(self, idx: int = 0 or str, save: bool = False):
         
         # Subject Folder Access
         subj_idx = idx if type(idx) == str else self.subj_list[idx]
@@ -155,6 +156,10 @@ class NCDataset(Dataset):
         #else: assert(num_slice == self.settings.num_slice)
           
         # Item Dictionary Returning
+        if save:
+            print(f"Saving Patient Data for {subj_idx} into Video Format")
+            torchvision.io.write_video(f"{self.data_folderpath}/video_data/V{self.settings.data_version}/{self.mode}/{subj_idx}.mp4",
+                                        img_data.unsqueeze(0).swapaxes(1, 3).swapaxes(1, 2), fps = self.settings.num_fps)
         return img_data.unsqueeze(0)
         """return {'img_data': img_data,#.unsqueeze(0),
                 'resolution': f'[{num_row}, {num_col}]',

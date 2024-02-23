@@ -34,7 +34,6 @@ class Trainer(object):
         amp = False,
         step_start_ema = 2000,
         update_ema_every = 10,
-        save_and_sample_every = 0,
         results_folder = './results',
         num_sample_rows = 4,
         max_grad_norm = None,
@@ -47,7 +46,6 @@ class Trainer(object):
         self.update_ema_every = update_ema_every
 
         self.step_start_ema = step_start_ema
-        self.save_and_sample_every = save_and_sample_every
 
         self.batch_size = train_batch_size
         self.image_size = diffusion_model.image_size
@@ -79,8 +77,8 @@ class Trainer(object):
         self.reset_parameters()
         self.fid_metric = FID(feature = 64)
         #self.model.update_fid(self.fid_metric)
-        #self.train_logger = TensorBoardLogger(results_folder, 'train')
-        #self.eval_logger = TensorBoardLogger(results_folder, 'eval')
+        self.train_logger = TensorBoardLogger(results_folder, 'train')
+        self.eval_logger = TensorBoardLogger(results_folder, 'eval')
         self.eval_writer = SummaryWriter(log_dir = f"{results_folder}/eval")
         print("training script initialized")
 
@@ -143,14 +141,16 @@ class Trainer(object):
 
                     self.scaler.scale(loss['MSE Loss'] / self.gradient_accumulate_every).backward()
 
-            wandb.log(loss)
-            #self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), self.step)
-            #self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), self.step)
-            #self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), self.step)
-            #self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], self.step)
-            #self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), self.step)
-            #self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), self.step)
-            #self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), self.step)
+            if self.step != 0 and self.step % self.settings.log_interval == 0:
+                wandb.log(loss)
+                #milestone = self.step // self.settings.log_interval
+                #self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), milestone)
+                #self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), milestone)
+                #self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), milestone)
+                #self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], milestone)
+                #self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), milestone)
+                #self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), milestone)
+                #self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), milestone)
 
             log = {'loss': loss['MSE Loss'].item()}
 
@@ -165,10 +165,10 @@ class Trainer(object):
             if self.step % self.update_ema_every == 0:
                 self.step_ema()
 
-            if self.step != 0 and self.step % self.save_and_sample_every == 0:
+            if self.step != 0 and self.step % self.settings.save_interval == 0:
                 self.save(run); print('saving model')
                 
-                milestone = self.step // self.save_and_sample_every
+                milestone = self.step // self.settings.save_interval
                 num_samples = self.num_sample_rows ** 2
                 batches = num_to_groups(num_samples, self.batch_size)
             

@@ -27,11 +27,11 @@ if True:
                                             'gamma_diffusion'},
                                 default = 'video_diffusion')
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
-                                default = 1)
+                                default = 2)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
                                 default = 1)
     ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
-                                default = 'gaussian')
+                                default = 'gamma')
     settings = ncdiff_parser.parse_args("")
 
     # ============================================================================================
@@ -105,8 +105,6 @@ if True:
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
                                 default = 1000)
-    ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
-                                default = 100)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
 
@@ -170,6 +168,7 @@ trainer = Trainer(  diff, private_dataset, settings = settings,
                     shuffle = settings.shuffle,
                     train_batch_size = settings.batch_size,
                     train_lr = settings.lr_base,
+                    save_and_sample_every = settings.save_interval,
                     train_num_steps = settings.num_steps,
                     gradient_accumulate_every = 2,
                     ema_decay = 0.995, amp = True,

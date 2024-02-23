@@ -1,6 +1,7 @@
 '''GaussianDiffusion model based on https://github.com/lucidrains/video-diffusion-pytorch/'''
 
 import sys
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -27,13 +28,15 @@ class GaussianDiffusion(nn.Module):
         channels = 3,
         timesteps = 1000,
         use_dynamic_thres = False, # from the Imagen paper
-        dynamic_thres_percentile = 0.9
+        dynamic_thres_percentile = 0.9,
+        noise_type: str = 'gaussian'
     ):
         super().__init__()
         self.channels = channels
         self.image_size = image_size
         self.num_frames = num_frames
         self.denoise_fn = denoise_fn
+        self.noise_type = noise_type
 
         betas = cosine_beta_schedule(timesteps)
 
@@ -129,7 +132,10 @@ class GaussianDiffusion(nn.Module):
     def p_sample(self, x, t, cond = None, cond_scale = 1., clip_denoised = True):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised, cond = cond, cond_scale = cond_scale)
-        noise = torch.randn_like(x)
+        if self.noise_type == 'gaussian': noise = torch.randn_like(x)
+        elif self.noise_type == 'poisson': noise = torch.from_numpy(np.random.poisson(size = x.size))
+        elif self.noise_type == 'gamma': noise = torch.from_numpy(np.random.gamma(x.shape))
+        else: raise NotImplementedError(f"{self.noise_type} Noise Distribution has not been Implemented!")
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
@@ -141,7 +147,8 @@ class GaussianDiffusion(nn.Module):
         b = shape[0]
         img = torch.randn(shape, device=device)
 
-        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        #for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        for i in reversed(range(0, self.num_timesteps)):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long), cond = cond, cond_scale = cond_scale)
 
         return unnormalize_img(img)
@@ -170,7 +177,8 @@ class GaussianDiffusion(nn.Module):
         xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
 
         img = (1 - lam) * xt1 + lam * xt2
-        for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        #for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        for i in reversed(range(0, t)):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long))
 
         return img
