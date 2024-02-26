@@ -1,6 +1,6 @@
 import torch
 import copy
-import wandb
+#import wandb
 
 from torch.optim import Adam
 from torch.utils import data
@@ -141,16 +141,16 @@ class Trainer(object):
 
                     self.scaler.scale(loss['MSE Loss'] / self.gradient_accumulate_every).backward()
 
-            if self.step != 0 and self.step % self.settings.log_interval == 0:
-                wandb.log(loss)
-                #milestone = self.step // self.settings.log_interval
-                #self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), milestone)
-                #self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), milestone)
-                #self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), milestone)
-                #self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], milestone)
-                #self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), milestone)
-                #self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), milestone)
-                #self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), milestone)
+            if self.step == 0 or self.step % self.settings.log_interval == 0:
+                #wandb.log(loss)
+                milestone = self.step // self.settings.log_interval
+                self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), milestone)
+                self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), milestone)
+                self.train_logger.experiment.add_scalar("FID Score", loss["FID Score"].item(), milestone)
+                self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], milestone)
+                self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), milestone)
+                self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), milestone)
+                self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), milestone)
 
             log = {'loss': loss['MSE Loss'].item()}
 
@@ -184,8 +184,8 @@ class Trainer(object):
                 for slice in range(sample3d.shape[2]):
                     #self.fid_metric.update(data[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = True)
                     self.fid_metric.update(sample3d[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = False)
-                wandb.log({"FID Score": self.fid_metric.compute()})
-                #self.eval_logger.experiment.add_scalar("FID Score", self.fid_metric.compute(), milestone)
+                #wandb.log({"FID Score": self.fid_metric.compute()})
+                self.eval_logger.experiment.add_scalar("FID Score", self.fid_metric.compute(), milestone)
                 self.eval_writer.add_video('Generated Images', sample3d.swapaxes(1, 2).repeat(1, 1, 3, 1, 1),
                                                             global_step = milestone, fps = 4, walltime = None)
                 
