@@ -2,7 +2,7 @@
 import os
 import sys
 import pathlib
-#import wandb
+import wandb
 import argparse
 import numpy as np
 import torch
@@ -98,28 +98,33 @@ if True:
     #ncdiff_parser.add_argument('--num_epochs', type = int,            # Number of Training Epochs
     #                            default = 30)
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
-                                default = 300)
+                                default = 500)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 500000)
+                                default = 100000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 1000)
+                                default = 10)
     ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
-                                default = 20)
+                                default = 2)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
+    ncdiff_parser.add_argument('--log_method', type = str,            # Metric Logging Methodology
+                                choices = {'wandb', 'tensorboard', None},
+                                default = 'tensorboard')
 
     # ============================================================================================
 
     settings = ncdiff_parser.parse_args("")
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
-#wandb.init( project = "MetaBreast", name = f"{settings.model_type}/V{settings.model_version}")
+
+if settings.log_method == 'wandb':
+    wandb.init( project = "MetaBreast", name = f"{settings.model_type}/V{settings.model_version}")
 
 # --------------------------------------------------------------------------------------------
 
 # Functionality Imports
-print(f"Video Diffusion Model | V{settings.model_version}")
+print(f"{settings.model_type} Model | V{settings.model_version} | {settings.noise_type} Noise")
 sys.path.append(settings.reader_folderpath)
 from nc_data_reader import NCDataset
 sys.path.append(settings.model_folderpath)
@@ -128,13 +133,13 @@ from GaussianDiffusion import GaussianDiffusion
 sys.path.append(settings.script_folderpath)
 from infer_script import Inferencer
 from train_script import Trainer
+print('PID:' + str(os.getpid()))
 
 # ============================================================================================
 # ====================================== Training Setup ======================================
 # ============================================================================================
 
 # Dataset Access
-
 private_dataset = NCDataset(settings,
                             mode = 'train',
                             dataset = 'private')
@@ -142,13 +147,15 @@ private_dataset = NCDataset(settings,
 #                            mode = 'train',
 #                            dataset = 'public')
 #dataset = ConcatDataset([private_dataset, public_dataset])
+#del public_dataset, private_dataset
 
 # --------------------------------------------------------------------------------------------
 
 # Model & Diffusion Process Initialization
-model = Unet3D(             dim = settings.dim,
-                            channels = settings.num_channel,
-                            dim_mults = settings.mult_dim)
+model = Unet3D( dim = settings.dim,
+                channels = settings.num_channel,
+                dim_mults = settings.mult_dim)
+
 diff = GaussianDiffusion(   model, timesteps = settings.num_ts,
                             noise_type = settings.noise_type,
                             image_size = settings.img_size,
@@ -166,15 +173,8 @@ diff_summary = summary(     diff,
 
 # Model Trainer Initialization
 trainer = Trainer(  diff, private_dataset, settings = settings,
-                    device = settings.device,
-                    shuffle = settings.shuffle,
-                    train_batch_size = settings.batch_size,
-                    train_lr = settings.lr_base,
-                    train_num_steps = settings.num_steps,
                     gradient_accumulate_every = 2,
-                    ema_decay = 0.995, amp = True,
-                    num_sample_rows = settings.save_img,
-                    results_folder = f"{settings.logs_folderpath}/V{settings.model_version}")
+                    ema_decay = 0.995, amp = True)
 
 # Model Trainer Application
 time_start = time.time()
@@ -197,4 +197,4 @@ infer.infer_new_data()
 
 # Running Commands
 #srun -p debug_8GB -q debug_8GB python video_diffusion_main.py
-#wandb.finish()
+if settings.log_method == 'wandb': wandb.finish()

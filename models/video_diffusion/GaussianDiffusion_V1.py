@@ -8,7 +8,7 @@ import torch.nn.functional as F
 
 from util.unet3d_utils import *
 from einops import rearrange
-#from tqdm import tqdm
+from tqdm import tqdm
 
 from einops_exts import check_shape
 from skimage.metrics import peak_signal_noise_ratio as PSNR
@@ -29,14 +29,14 @@ class GaussianDiffusion(nn.Module):
         timesteps = 1000,
         use_dynamic_thres = False, # from the Imagen paper
         dynamic_thres_percentile = 0.9,
-        noise_type: str = 'gaussian',
+        noise_type: str = 'gaussian'
     ):
         super().__init__()
         self.channels = channels
         self.image_size = image_size
         self.num_frames = num_frames
         self.denoise_fn = denoise_fn
-        
+        self.noise_type = noise_type
 
         betas = cosine_beta_schedule(timesteps)
 
@@ -46,7 +46,6 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.noise_type = noise_type
 
         # register buffer helper function that casts float64 to float32
 
@@ -136,6 +135,7 @@ class GaussianDiffusion(nn.Module):
         if self.noise_type == 'gaussian': noise = torch.randn_like(x)
         elif self.noise_type == 'poisson': noise = torch.from_numpy(np.random.poisson(size = x.size))
         elif self.noise_type == 'gamma': noise = torch.from_numpy(np.random.gamma(x.shape))
+        else: raise NotImplementedError(f"{self.noise_type} Noise Distribution has not been Implemented!")
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
@@ -191,11 +191,12 @@ class GaussianDiffusion(nn.Module):
             extract(self.sqrt_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape) * noise
         )
 
+    def update_fid(self, fid_metric): self.fid_metric = fid_metric
     def p_losses(self, x_start, t, cond = None, noise = None, **kwargs):
         b, c, f, h, w, device = *x_start.shape, x_start.device
         noise = default(noise, lambda: torch.randn_like(x_start)).to(device)
-
         self.ssim_metric = SSIM3D(window_size = 3).to(device)
+
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
 
         # if is_list_str(cond):
@@ -209,8 +210,11 @@ class GaussianDiffusion(nn.Module):
         norm_noise /= norm_noise.max(1, keepdim = True)[0]
         norm_recon = x_recon[0] - x_recon[0].min(1, keepdim = True)[0]
         norm_recon /= norm_recon.max(1, keepdim = True)[0].to(dtype = torch.float32)
+        #self.fid_metric.update(torch.Tensor(noise, dtype = torch.uint8), real = True)
+        #self.fid_metric.update(torch.Tensor(x_recon, dtype = torch.uint8), real = False)
         return {"L1 Loss": F.l1_loss(noise, x_recon),
                 "MSE Loss": F.mse_loss(noise, x_recon),
+                #"FID Score": self.fid_metric.compute(),
                 "Dice Score": mean_dice_score(  noise.detach().cpu(),
                                                 x_recon.detach().cpu()),
                 "SSIM Index": self.ssim_metric( noise, x_recon),

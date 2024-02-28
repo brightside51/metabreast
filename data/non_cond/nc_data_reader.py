@@ -120,7 +120,7 @@ class NCDataset(Dataset):
         # --------------------------------------------------------------------------------------------
             
         # Subject Slice Data Access
-        img_data = torch.empty((70, self.settings.img_size, self.settings.img_size)); slice_list = []
+        img_data = torch.empty((75, self.settings.img_size, self.settings.img_size)); slice_list = []
         for slice_filepath in subj_filelist:
             if os.path.splitext(slice_filepath)[1] in ['', '.dcm']:
                 
