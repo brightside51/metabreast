@@ -3,11 +3,12 @@ import copy
 import wandb
 import sys
 
-from torch.optim import Adam
+from torch.optim import AdamW
 from torch.utils import data
 from torch.cuda.amp import autocast, GradScaler
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ExponentialLR
 from torch import nn
 import torch.nn.functional as F
 
@@ -49,11 +50,14 @@ class Trainer(object):
 
         assert len(self.ds) > 0, 'need to have at least 1 video to start training (although 1 is not great, try 100k)'
         self.dl = data.DataLoader(  self.ds, batch_size = self.settings.batch_size,
-                                    shuffle = self.settings.shuffle, pin_memory = True)
+                                    shuffle = self.settings.shuffle, pin_memory = True,
+                                    prefetch_factor = self.settings.prefetch_factor,
+                                    pin_memory_device = self.settings.device)
         self.num_batch = len(self.dl); self.dl = cycle(self.dl)
         print(f'training using {len(self.ds)} cases in {self.num_batch} batches')
-        self.opt = Adam(diffusion_model.parameters(), lr = self.settings.lr_base)
-
+        self.opt = AdamW(diffusion_model.parameters(), lr = self.settings.lr_base)
+        self.lr_scheduler = ExponentialLR(self.opt, gamma = self.settings.lr_decay)
+        
         self.step = 0; self.amp = amp
         self.scaler = GradScaler(enabled = amp)
         self.max_grad_norm = max_grad_norm
@@ -67,7 +71,7 @@ class Trainer(object):
             self.eval_logger = TensorBoardLogger(self.results_folder, 'eval')
         self.eval_writer = SummaryWriter(log_dir = f"{self.results_folder}/eval")
         self.ssim_metric = SSIM3D(window_size = 3).to(self.settings.device)
-        print("training script initialized")
+        if self.settings.verbose: print("training script initialized")
 
     def reset_parameters(self):
         self.ema_model.load_state_dict(self.model.state_dict())
@@ -112,7 +116,8 @@ class Trainer(object):
 
         while self.step < self.settings.num_steps:
             for i in range(self.gradient_accumulate_every):
-                data = next(self.dl).cuda()
+                if self.settings.verbose: print('reading data samples / batches')
+                data = next(self.dl).to(self.settings.device)
 
                 if self.step < self.num_batch:
                     for slice in range(data.shape[2]):
@@ -130,65 +135,76 @@ class Trainer(object):
                 print(f'{self.step}: {loss["MSE Loss"].item()}')
 
             if self.step == 0 or self.step % self.settings.log_interval == 0:
-                print("logging training metrics")
+                if self.settings.verbose: print("logging training metrics")
                 if self.settings.log_method == 'wandb': wandb.log(loss)
                 elif self.settings.log_method == 'tensorboard':
+                    
                     milestone = self.step // self.settings.log_interval
+                    self.train_logger.experiment.add_scalar("Learning Rate", self.lr_scheduler.get_last_lr()[0], milestone)
                     self.train_logger.experiment.add_scalar("L1 Loss", loss["L1 Loss"].item(), milestone)
                     self.train_logger.experiment.add_scalar("MSE Loss", loss["MSE Loss"].item(), milestone)
                     self.train_logger.experiment.add_scalar("Dice Score", loss["Dice Score"], milestone)
                     self.train_logger.experiment.add_scalar("SSIM Index", loss["SSIM Index"].item(), milestone)
                     self.train_logger.experiment.add_scalar("PSNR Loss", loss["PSNR Loss"].item(), milestone)
                     self.train_logger.experiment.add_scalar("NMI Loss", loss["NMI Loss"].item(), milestone)
-            log = {'loss': loss["MSE Loss"].item()}
+                log = {'loss': loss["MSE Loss"].item()}
 
             if exists(self.max_grad_norm):
-                print("clipping normalized gradient")
+                if self.settings.verbose: print("clipping normalized gradient")
                 self.scaler.unscale_(self.opt)
                 nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
 
-            print("backpropagating gradient descent")
+            if self.settings.verbose: print("backpropagating gradient descent")
             self.scaler.step(self.opt)
             self.scaler.update()
             self.opt.zero_grad()
 
             if self.step % self.update_ema_every == 0:
-                print("updating ema model"); self.step_ema()
+                if self.settings.verbose: print("updating ema model")
+                self.step_ema()
 
             if self.step != 0 and self.step % self.settings.save_interval == 0:
-                print(f"evaluating model's performance")
+                if self.settings.verbose: print('saving model')
+                self.save(run)
+                if self.settings.verbose: print(f"evaluating model's performance")
                 milestone = self.step // self.settings.save_interval
                 num_samples = self.settings.save_img ** 2
-                batches = num_to_groups(num_samples, self.batch_size)
-            
+                batches = num_to_groups(num_samples, self.settings.batch_size)
+                
                 all_videos_list = list(map(lambda n: self.ema_model.sample(batch_size=n), batches))
                 all_videos_list = F.pad(torch.cat(all_videos_list, dim = 0), (2, 2, 2, 2))
-            
-                one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.num_sample_rows)
-                video_path = str(self.results_folder / str(f'{milestone}.gif'))
-                video_tensor_to_gif(one_gif, video_path)
-                log = {**log, 'sample': video_path}
-                self.save(milestone)
-
                 print(all_videos_list.shape)
+            
+                #one_gif = rearrange(all_videos_list, '(i j) c f h w -> c f (i h) (j w)', i = self.settings.save_img)
+                #video_path = str(self.results_folder / str(f'{milestone}.gif'))
+                #video_tensor_to_gif(one_gif, video_path)
+                #log = {**log, 'sample': video_path}
+                #self.save(milestone)
+
                 for slice in range(all_videos_list.shape[2]):
                     self.fid_metric.update(all_videos_list[:, 0, slice].unsqueeze(1).repeat(1, 3, 1, 1).type(torch.ByteTensor), real = False)
 
-                print('logging evaluation metrics')
+                if self.settings.verbose: print('logging evaluation metrics')
                 if self.settings.log_method == 'wandb':
-                    wandb.log({"Val | FID Score": self.fid_metric.compute()})
-                    wandb.log({"Val | SSIM Index": self.ssim_metric(data[0], all_videos_list[0])})
-                    wandb.log({"Val |Dice Score": mean_dice_score(data[0].detach().cpu(), all_videos_list[0].detach().cpu())})
+                    wandb.log({"val/FID Score": self.fid_metric.compute()})
+                    wandb.log({"val/SSIM Index": self.ssim_metric(data[0], all_videos_list[0])})
+                    wandb.log({"val/Dice Score": mean_dice_score(data[0].detach().cpu(), all_videos_list[0].detach().cpu())})
+                    wandb.log({"val/Inference Samples": wandb.Video(all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1), fps = 4)})
                 elif self.settings.log_method == 'tensorboard':
-                    self.eval_logger.experiment.add_scalar("FID Score", self.fid_metric.compute(), milestone)
-                    self.eval_logger.experiment.add_scalar("SSIM Index", self.ssim_metric(data[0], all_videos_list[0]), milestone)
-                    self.eval_logger.experiment.add_scalar("Dice Score", mean_dice_score(data[0].detach().cpu(),
-                                                                            all_videos_list[0].detach().cpu()), milestone)
-                self.eval_writer.add_video('Generated Images', all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1),
-                                                                    global_step = milestone, fps = 4, walltime = None)
+                    self.eval_logger.experiment.add_scalar("val/FID Score", self.fid_metric.compute(), milestone)
+                    self.eval_logger.experiment.add_scalar("val/SSIM Index", self.ssim_metric(data[0], all_videos_list[0]), milestone)
+                    self.eval_logger.experiment.add_scalar("val/Dice Score", mean_dice_score(data[0].detach().cpu(),
+                                                                                all_videos_list[0].detach().cpu()), milestone)
+                    self.eval_writer.add_video('val/Inference Samples', all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1),
+                                                                        global_step = milestone, fps = 4, walltime = None)
+                    
+                # Model Inference Mode
+                infer = Inferencer( self.diffusion_model, num_samples = 20, img_size = self.settings.img_size, num_slice = self.settings.num_slice,
+                                    model_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/model-save_V{self.settings.model_version}.pt"),
+                                    output_path = Path(f"{self.settings.logs_folderpath}/V{self.settings.model_version}/gen_img"))
+                infer.infer_new_data()
                 
-            log_fn(log)
-            self.step += 1
+            log_fn(log); self.step += 1; self.lr_scheduler.step()
 
         self.save(run)
         print('training completed')

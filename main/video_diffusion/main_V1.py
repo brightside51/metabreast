@@ -12,7 +12,7 @@ import time
 
 # Functionality Imports
 from pathlib import Path
-from torchinfo import summary
+#from torchinfo import summary
 from torch.utils.data import ConcatDataset
 
 # ============================================================================================
@@ -53,10 +53,15 @@ if True:
                                 default = f'../../scripts/{settings.model_type}')
     ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
                                 default = f'../../logs/{settings.model_type}')
+    ncdiff_parser.add_argument('--verbose', type = bool,                  # Verbose Control Variable
+                                default = False)
         
     # ============================================================================================
 
     # Dataset | Dataset General Arguments
+    ncdiff_parser.add_argument('--data_format', type = str,           # Chosen Dataset Format for Reading
+                                choices =  {'mp4', 'dicom'},
+                                default = 'mp4')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
@@ -81,6 +86,8 @@ if True:
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
                                 default = 8)
+    ncdiff_parser.add_argument('--prefetch_factor', type = int,       # Number of Prefetched DataLoader Batches per Worker
+                                default = 1)
 
     # ============================================================================================
 
@@ -103,6 +110,10 @@ if True:
                                 default = 100000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
+    ncdiff_parser.add_argument('--lr_decay', type = float,            # Learning Rate Decay Value
+                                default = 0.995)
+    
+    # Model | Result Logging Arguments 
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
                                 default = 10)
     ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
