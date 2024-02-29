@@ -44,6 +44,7 @@ class NCDataset(Dataset):
         else:
             print(f"Generating New Save Files for {self.dataset} Dataset | Version {settings.data_version}")
             self.subj_list = os.listdir(self.data_folderpath)       # Complete List of Subjects in Dataset
+            self.subj_list.remove('video_data')
             self.subj_list = self.subj_split(self.subj_list)        # Selected List of Subjects in Dataset
         #assert len(self.subj_list) == self.num_subj, f"WARNING: Number of subjs does not match Dataset Version!"
 
@@ -92,75 +93,85 @@ class NCDataset(Dataset):
         
     # Single Batch / Subject Generation Functionality
     def __getitem__(self, idx: int = 0 or str, save: bool = False):
-        
-        # Subject Folder Access
         subj_idx = idx if type(idx) == str else self.subj_list[idx]
-        subj_folderpath = f"{self.data_folderpath}/{subj_idx}"
-        subj_filelist = os.listdir(subj_folderpath); i = 0
-        while len(subj_filelist) > 0 and len(subj_filelist) <= 3:
-            subj_folderpath = Path(f"{subj_folderpath}/{subj_filelist[0]}")
-            subj_filelist = os.listdir(subj_folderpath)
-        while os.path.splitext(f"{subj_folderpath}/{subj_filelist[i]}")[1] not in ['', '.dcm']: i += 1
+        if self.settings.data_format == 'mp4':
 
-        # Subject General Information Access
-        #print(f"Accessing Subject {subj_idx}: {len(subj_filelist) - i} Slices")
-        subj_filepath = Path((f"{subj_folderpath}/{subj_filelist[i]}"))
-        subj_info = pydicom.dcmread(subj_filepath)
-        subj_ori = subj_info[0x0020, 0x0037].value
-        subj_v_flip = (np.all(subj_ori == [-1, 0, 0, 0, -1, 0]))
-        subj_h_flip = (torch.rand(1) < (self.settings.h_flip / 100))
-        #num_row = subj_info.Rows; num_col = subj_info.Columns
-        #if self.dataset == 'private':
-            #num_slice = int(subj_info[0x2001, 0x1018].value)
-            #preg_status = int(subj_info[0x0010, 0x21c0].value)
-        #else:
-            #num_slice = int(subj_info[0x0020, 0x1002].value)
-            #preg_status = None
+            # Subject Data Access
+            subj_folderpath = f"{self.data_folderpath}/video_data/V{self.settings.data_version}/{self.mode}/{subj_idx}.mp4"
+            img_data = (torchvision.io.read_video(subj_folderpath, pts_unit = 'sec')[0][:, :, :, 0] / 255.0).type(torch.float32)
 
-        # --------------------------------------------------------------------------------------------
-            
-        # Subject Slice Data Access
-        img_data = torch.empty((75, self.settings.img_size, self.settings.img_size)); slice_list = []
-        for slice_filepath in subj_filelist:
-            if os.path.splitext(slice_filepath)[1] in ['', '.dcm']:
+        elif self.settings.data_format == 'dicom':
+
+            # Subject Folder Access
+            subj_folderpath = f"{self.data_folderpath}/{subj_idx}"
+            subj_filelist = os.listdir(subj_folderpath); i = 0
+            while len(subj_filelist) > 0 and len(subj_filelist) <= 3:
+                subj_folderpath = Path(f"{subj_folderpath}/{subj_filelist[0]}")
+                subj_filelist = os.listdir(subj_folderpath)
+            while os.path.splitext(f"{subj_folderpath}/{subj_filelist[i]}")[1] not in ['', '.dcm']: i += 1
+
+            # Subject General Information Access
+            #print(f"Accessing Subject {subj_idx}: {len(subj_filelist) - i} Slices")
+            subj_filepath = Path((f"{subj_folderpath}/{subj_filelist[i]}"))
+            subj_info = pydicom.dcmread(subj_filepath)
+            subj_ori = subj_info[0x0020, 0x0037].value
+            subj_v_flip = (np.all(subj_ori == [-1, 0, 0, 0, -1, 0]))
+            subj_h_flip = (torch.rand(1) < (self.settings.h_flip / 100))
+            #num_row = subj_info.Rows; num_col = subj_info.Columns
+            #if self.dataset == 'private':
+                #num_slice = int(subj_info[0x2001, 0x1018].value)
+                #preg_status = int(subj_info[0x0010, 0x21c0].value)
+            #else:
+                #num_slice = int(subj_info[0x0020, 0x1002].value)
+                #preg_status = None
+
+            # --------------------------------------------------------------------------------------------
                 
-                # Slice Data Access
-                slice_filepath = Path(f"{subj_folderpath}/{slice_filepath}")
-                slice_data = pydicom.dcmread(slice_filepath, force=True)
-                slice_idx = int(slice_data[0x0020, 0x0013].value) - 1
-                slice_list.append(slice_idx)
-                img_slice = slice_data.pixel_array.astype(float)
+            # Subject Slice Data Access
+            img_data = torch.empty((100, self.settings.img_size, self.settings.img_size)); slice_list = []
+            for slice_filepath in subj_filelist:
+                if os.path.splitext(slice_filepath)[1] in ['', '.dcm']:
+                    
+                    # Slice Data Access
+                    slice_filepath = Path(f"{subj_folderpath}/{slice_filepath}")
+                    slice_data = pydicom.dcmread(slice_filepath, force=True)
+                    slice_idx = int(slice_data[0x0020, 0x0013].value) - 1
+                    #print(slice_idx)
+                    slice_list.append(slice_idx)
+                    img_slice = slice_data.pixel_array.astype(float)
 
-                # Slice Image Pre-Processing | Rescaling, Resizing & Flipping
-                if self.settings.data_prep:
-                    img_slice = np.uint8((np.maximum(img_slice, 0) / img_slice.max()) * 255)
-                    img_slice = Image.fromarray(img_slice).resize(( self.settings.img_size,
-                                                                    self.settings.img_size)) 
-                    if subj_h_flip: img_slice = self.h_flip(img_slice)
-                    if subj_v_flip: img_slice = self.v_flip(img_slice)
-                    img_slice = np.array(self.transform(img_slice))
-                img_data[slice_idx, :, :] = torch.Tensor(img_slice); del img_slice
-        img_data = img_data[np.sort(slice_list)]
+                    # Slice Image Pre-Processing | Rescaling, Resizing & Flipping
+                    if self.settings.data_prep:
+                        img_slice = np.uint8((np.maximum(img_slice, 0) / img_slice.max()) * 255)
+                        img_slice = Image.fromarray(img_slice).resize(( self.settings.img_size,
+                                                                        self.settings.img_size)) 
+                        if subj_h_flip: img_slice = self.h_flip(img_slice)
+                        if subj_v_flip: img_slice = self.v_flip(img_slice)
+                        img_slice = np.array(self.transform(img_slice))
+                    img_data[slice_idx, :, :] = torch.Tensor(img_slice); del img_slice
+            img_data = img_data[np.sort(slice_list)]
 
-        # --------------------------------------------------------------------------------------------
-        
-        # Correction for Chosen Number of Slices
-        extra_slice = self.settings.num_slice - img_data.shape[0]
-        if img_data.shape[0] < self.settings.num_slice:             # Addition of Repeated Peripheral Slices
-            for extra in range(extra_slice):
-                if extra % 2 == 0: img_data = torch.cat((img_data, img_data[-1].unsqueeze(0)), dim = 0)
-                else: img_data = torch.cat((img_data[0].unsqueeze(0), img_data), dim = 0)
-        elif img_data.shape[0] > self.settings.num_slice:           # Removal of Emptier Peripheral Slices
-            img_data = img_data[int(np.ceil(-extra_slice / 2)) :\
-                int(len(img_data) - np.floor(-extra_slice / 2))]
-        #else: assert(num_slice == self.settings.num_slice)
+            # --------------------------------------------------------------------------------------------
+            
+            # Correction for Chosen Number of Slices
+            extra_slice = self.settings.num_slice - img_data.shape[0]
+            if img_data.shape[0] < self.settings.num_slice:             # Addition of Repeated Peripheral Slices
+                for extra in range(extra_slice):
+                    if extra % 2 == 0: img_data = torch.cat((img_data, img_data[-1].unsqueeze(0)), dim = 0)
+                    else: img_data = torch.cat((img_data[0].unsqueeze(0), img_data), dim = 0)
+            elif img_data.shape[0] > self.settings.num_slice:           # Removal of Emptier Peripheral Slices
+                img_data = img_data[int(np.ceil(-extra_slice / 2)) :\
+                    int(len(img_data) - np.floor(-extra_slice / 2))]
+            #else: assert(num_slice == self.settings.num_slice)
           
-        # Item Dictionary Returning
-        if save:
-            print(f"Saving Patient Data for {subj_idx} into Video Format")
-            torchvision.io.write_video(f"{self.data_folderpath}/video_data/V{self.settings.data_version}/{self.mode}/{subj_idx}.mp4",
-                                        img_data.unsqueeze(0).swapaxes(1, 3).swapaxes(1, 2), fps = self.settings.num_fps)
+            # Item Dictionary Returning
+            if save:
+                print(f"Saving Patient Data for {subj_idx} into Video Format")
+                torchvision.io.write_video(f"{self.data_folderpath}/video_data/V{self.settings.data_version}/{self.mode}/{subj_idx}.mp4",
+                    (img_data.unsqueeze(3).repeat(1, 1, 1, 3) * 255).type(torch.uint8), fps = self.settings.num_fps)
+        else: raise(NotImplementedError)
         return img_data.unsqueeze(0)
+    
         """return {'img_data': img_data,#.unsqueeze(0),
                 'resolution': f'[{num_row}, {num_col}]',
                 'subj_id': subj_id, 'num_slice': num_slice,

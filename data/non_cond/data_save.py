@@ -23,7 +23,7 @@ if True:
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 0)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
-                                default = 0)
+                                default = 1)
     ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
                                 default = 'gaussian')
     settings = ncdiff_parser.parse_args("")
@@ -34,11 +34,11 @@ if True:
     ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
                                 default = '../../data/non_cond')
     ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
-                                #default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
-                                default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                #default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
     ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
-                                #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
-                                default = '../../../../../datasets/private/METABREST/T1W_Breast')
+                                default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                #default = '../../../../../datasets/private/METABREST/T1W_Breast')
 
     # Directory | Model-Related Path Arguments
     ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
@@ -51,6 +51,9 @@ if True:
     # ============================================================================================
 
     # Dataset | Dataset General Arguments
+    ncdiff_parser.add_argument('--data_format', type = str,           # Chosen Dataset Format for Reading
+                                choices =  {'mp4', 'dicom'},
+                                default = 'mp4')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
@@ -110,21 +113,20 @@ if True:
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 # Functionality Imports
-sys.path.append(settings.reader_folderpath)
+#sys.path.append(settings.reader_folderpath)
 from nc_data_reader import NCDataset
 
 # ============================================================================================
 
 # Dataset Saving Example
-#private_dataset = NCDataset(settings,
-#                            mode = 'train',
-#                            dataset = 'private')
+private_dataset = NCDataset(settings,
+                            mode = 'train',
+                            dataset = 'private')
 #public_dataset = NCDataset( settings,
 #                            mode = 'train',
 #                            dataset = 'public')
-#data = private_dataset.__getitem__(0, save = True)
+data = private_dataset.__getitem__(0)
 #print(data.shape)
-#for i in range(len(dataset)): dataset.__getitem__(i)
-
-torchvision.io.write_video(f"{settings.private_data_folderpath}/video_data/V{settings.data_version}/train/rand.mp4",
-                                torch.randn(30, 64, 64, 3), fps = settings.num_fps)
+print(data.shape)
+#print(data.shape); print(torch.max(data)); print(torch.min(data))
+#for i in range(16, len(public_dataset)): public_dataset.__getitem__(i, save = True)
