@@ -54,7 +54,7 @@ if True:
     ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
                                 default = f'../../logs/{settings.model_type}')
     ncdiff_parser.add_argument('--verbose', type = bool,                  # Verbose Control Variable
-                                default = False)
+                                default = True)
         
     # ============================================================================================
 
@@ -82,12 +82,14 @@ if True:
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
                                 default = 1)
+    ncdiff_parser.add_argument('--num_fps', type = int,               # Number of Video Frames per Second
+                                default = 4)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
                                 default = 8)
     ncdiff_parser.add_argument('--prefetch_factor', type = int,       # Number of Prefetched DataLoader Batches per Worker
-                                default = 1)
+                                default = 2)
 
     # ============================================================================================
 
@@ -102,10 +104,10 @@ if True:
                                 default = (1, 2, 4, 8))
 
     # Model | Training & Diffusion Arguments
-    #ncdiff_parser.add_argument('--num_epochs', type = int,            # Number of Training Epochs
+    #ncdiff_parser.add_argument('--num_epochs', type = int,           # Number of Training Epochs
     #                            default = 30)
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
-                                default = 500)
+                                default = 1)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
                                 default = 100000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
@@ -117,7 +119,7 @@ if True:
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
                                 default = 10)
     ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
-                                default = 2)
+                                default = 1)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
     ncdiff_parser.add_argument('--log_method', type = str,            # Metric Logging Methodology

@@ -2,6 +2,7 @@ import torch
 import copy
 import wandb
 import sys
+import pdb
 
 from torch.optim import AdamW
 from torch.utils import data
@@ -52,7 +53,8 @@ class Trainer(object):
         self.dl = data.DataLoader(  self.ds, batch_size = self.settings.batch_size,
                                     shuffle = self.settings.shuffle, pin_memory = True,
                                     prefetch_factor = self.settings.prefetch_factor,
-                                    pin_memory_device = self.settings.device)
+                                    num_workers = self.settings.num_workers)
+                                    #pin_memory_device = self.settings.device)
         self.num_batch = len(self.dl); self.dl = cycle(self.dl)
         print(f'training using {len(self.ds)} cases in {self.num_batch} batches')
         self.opt = AdamW(diffusion_model.parameters(), lr = self.settings.lr_base)
@@ -115,7 +117,10 @@ class Trainer(object):
         assert callable(log_fn)
 
         while self.step < self.settings.num_steps:
+
+            pdb.set_trace()
             for i in range(self.gradient_accumulate_every):
+
                 if self.settings.verbose: print('reading data samples / batches')
                 data = next(self.dl).to(self.settings.device)
 
@@ -189,14 +194,14 @@ class Trainer(object):
                     wandb.log({"val/FID Score": self.fid_metric.compute()})
                     wandb.log({"val/SSIM Index": self.ssim_metric(data[0], all_videos_list[0])})
                     wandb.log({"val/Dice Score": mean_dice_score(data[0].detach().cpu(), all_videos_list[0].detach().cpu())})
-                    wandb.log({"val/Inference Samples": wandb.Video(all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1), fps = 4)})
+                    wandb.log({"val/Inference Samples": wandb.Video(all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1), fps = self.settings.num_fps)})
                 elif self.settings.log_method == 'tensorboard':
                     self.eval_logger.experiment.add_scalar("val/FID Score", self.fid_metric.compute(), milestone)
                     self.eval_logger.experiment.add_scalar("val/SSIM Index", self.ssim_metric(data[0], all_videos_list[0]), milestone)
                     self.eval_logger.experiment.add_scalar("val/Dice Score", mean_dice_score(data[0].detach().cpu(),
                                                                                 all_videos_list[0].detach().cpu()), milestone)
                     self.eval_writer.add_video('val/Inference Samples', all_videos_list.swapaxes(1, 2).repeat(1, 1, 3, 1, 1),
-                                                                        global_step = milestone, fps = 4, walltime = None)
+                                                                        global_step = milestone, fps = self.settings.num_fps, walltime = None)
                     
                 # Model Inference Mode
                 infer = Inferencer( self.diffusion_model, num_samples = 20, img_size = self.settings.img_size, num_slice = self.settings.num_slice,
