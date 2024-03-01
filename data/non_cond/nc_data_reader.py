@@ -97,6 +97,7 @@ class NCDataset(Dataset):
         if self.settings.data_format == 'mp4':
 
             # Subject Data Access
+            if self.settings.verbose: print(subj_idx)
             subj_folderpath = f"{self.data_folderpath}/video_data/V{self.settings.data_version}/{self.mode}/{subj_idx}.mp4"
             img_data = (torchvision.io.read_video(subj_folderpath, pts_unit = 'sec')[0][:, :, :, 0] / 255.0).type(torch.float32)
 

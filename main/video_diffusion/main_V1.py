@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 #from torchinfo import summary
 from torch.utils.data import ConcatDataset
+from datetime import datetime
 
 # ============================================================================================
 
@@ -30,8 +31,6 @@ if True:
                                 default = 1)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
                                 default = 1)
-    ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
-                                default = 'gaussian')
     settings = ncdiff_parser.parse_args("")
 
     # ============================================================================================
@@ -40,11 +39,11 @@ if True:
     ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
                                 default = '../../data/non_cond')
     ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
-                                #default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
-                                default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                #default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
     ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
-                                #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
-                                default = '../../../../../datasets/private/METABREST/T1W_Breast')
+                                default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                #default = '../../../../../datasets/private/METABREST/T1W_Breast')
 
     # Directory | Model-Related Path Arguments
     ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
@@ -104,6 +103,8 @@ if True:
                                 default = (1, 2, 4, 8))
 
     # Model | Training & Diffusion Arguments
+    ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
+                                default = 'gaussian')
     #ncdiff_parser.add_argument('--num_epochs', type = int,           # Number of Training Epochs
     #                            default = 30)
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
@@ -124,7 +125,7 @@ if True:
                                 default = 2)
     ncdiff_parser.add_argument('--log_method', type = str,            # Metric Logging Methodology
                                 choices = {'wandb', 'tensorboard', None},
-                                default = 'tensorboard')
+                                default = 'wandb')
 
     # ============================================================================================
 
@@ -132,7 +133,12 @@ if True:
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 if settings.log_method == 'wandb':
-    wandb.init( project = "MetaBreast", name = f"{settings.model_type}/V{settings.model_version}")
+    wandb.init( project = "MetaBreast",
+                name = f"{settings.model_type}/V{settings.model_version}",
+                config = {  'model_type': settings.model_type,
+                            'model_version': settings.model_version,
+                            'data_version': settings.data_version,
+                            'date': {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}})
 
 # --------------------------------------------------------------------------------------------
 
