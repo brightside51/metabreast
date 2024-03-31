@@ -14,3 +14,4 @@
 *.sh
 *.err
 **/main/video_diffusion/wandb
+*.gif

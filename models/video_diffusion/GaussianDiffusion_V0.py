@@ -1,37 +1,41 @@
 '''GaussianDiffusion model based on https://github.com/lucidrains/video-diffusion-pytorch/'''
 
+import sys
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from util.unet3d_utils import *
 from einops import rearrange
-from tqdm import tqdm
+#from tqdm import tqdm
 
 from einops_exts import check_shape
-
+from skimage.metrics import peak_signal_noise_ratio as PSNR
+from skimage.metrics import normalized_mutual_information as NMI
+sys.path.append('../../eval')
+from ssim3d_metric import SSIM3D
+from dice_metric import mean_dice_score
 
 class GaussianDiffusion(nn.Module):
     def __init__(
         self,
         denoise_fn,
+        settings,
         *,
-        image_size,
-        num_frames,
         text_use_bert_cls = False,
-        channels = 3,
-        timesteps = 1000,
-        loss_type = 'l1',
-        use_dynamic_thres = False, # from the Imagen paper
+        #timesteps = 1000,
+        use_dynamic_thres = False,
         dynamic_thres_percentile = 0.9
     ):
-        super().__init__()
-        self.channels = channels
-        self.image_size = image_size
-        self.num_frames = num_frames
+        super().__init__(); self.settings = settings
+        #self.channels = self.settings.num_channel
+        #self.image_size = self.settings.img_size
+        #self.num_frames = self.settings.num_slice
+
         self.denoise_fn = denoise_fn
 
-        betas = cosine_beta_schedule(timesteps)
+        betas = cosine_beta_schedule(self.settings.num_ts)
 
         alphas = 1. - betas
         alphas_cumprod = torch.cumprod(alphas, axis=0)
@@ -39,7 +43,6 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.loss_type = loss_type
 
         # register buffer helper function that casts float64 to float32
 
@@ -76,7 +79,8 @@ class GaussianDiffusion(nn.Module):
         self.text_use_bert_cls = text_use_bert_cls
 
         # dynamic thresholding when sampling
-
+        
+        self.ssim_metric = SSIM3D(window_size = 3).to(self.settings.device)
         self.use_dynamic_thres = use_dynamic_thres
         self.dynamic_thres_percentile = dynamic_thres_percentile
 
@@ -126,7 +130,9 @@ class GaussianDiffusion(nn.Module):
     def p_sample(self, x, t, cond = None, cond_scale = 1., clip_denoised = True):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised, cond = cond, cond_scale = cond_scale)
-        noise = torch.randn_like(x)
+        if self.settings.noise_type == 'gaussian': noise = torch.randn_like(x)
+        elif self.settings.noise_type == 'poisson': noise = torch.from_numpy(np.random.poisson(size = x.size))
+        elif self.settings.noise_type == 'gamma': noise = torch.from_numpy(np.random.gamma(x.shape))
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
@@ -138,7 +144,8 @@ class GaussianDiffusion(nn.Module):
         b = shape[0]
         img = torch.randn(shape, device=device)
 
-        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        #for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
+        for i in reversed(range(0, self.num_timesteps)):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long), cond = cond, cond_scale = cond_scale)
 
         return unnormalize_img(img)
@@ -151,10 +158,12 @@ class GaussianDiffusion(nn.Module):
             #cond = bert_embed(tokenize(cond)).to(device)
 
         batch_size = cond.shape[0] if exists(cond) else batch_size
-        image_size = self.image_size
-        channels = self.channels
-        num_frames = self.num_frames
-        return self.p_sample_loop((batch_size, channels, num_frames, image_size, image_size), cond = cond, cond_scale = cond_scale)
+        #image_size = self.image_size
+        #channels = self.channels
+        #num_frames = self.num_frames
+        return self.p_sample_loop((batch_size, self.settings.num_channel,
+            self.settings.num_slice, self.settings.img_size,
+            self.settings.img_size), cond = cond, cond_scale = cond_scale)
 
     @torch.inference_mode()
     def interpolate(self, x1, x2, t = None, lam = 0.5):
@@ -167,7 +176,8 @@ class GaussianDiffusion(nn.Module):
         xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
 
         img = (1 - lam) * xt1 + lam * xt2
-        for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        #for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
+        for i in reversed(range(0, t)):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long))
 
         return img
@@ -192,18 +202,25 @@ class GaussianDiffusion(nn.Module):
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
 
-        if self.loss_type == 'l1':
-            loss = F.l1_loss(noise, x_recon)
-        elif self.loss_type == 'l2':
-            loss = F.mse_loss(noise, x_recon)
-        else:
-            raise NotImplementedError()
-
-        return loss
+        # Metric Computation
+        norm_noise = noise[0] - noise[0].min(1, keepdim = True)[0]
+        norm_noise /= norm_noise.max(1, keepdim = True)[0]
+        norm_recon = x_recon[0] - x_recon[0].min(1, keepdim = True)[0]
+        norm_recon /= norm_recon.max(1, keepdim = True)[0].to(dtype = torch.float32)
+        return {"L1 Loss": F.l1_loss(noise, x_recon),
+                "MSE Loss": F.mse_loss(noise, x_recon),
+                "Dice Score": mean_dice_score(  noise.detach().cpu(),
+                                                x_recon.detach().cpu()),
+                "SSIM Index": self.ssim_metric( noise, x_recon),
+                "PSNR Loss": PSNR(  norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy()),
+                "NMI Loss": NMI(    norm_noise.detach().cpu().numpy(),
+                                    norm_recon.detach().cpu().numpy())}
 
     def forward(self, x, *args, **kwargs):
-        b, device, img_size, = x.shape[0], x.device, self.image_size
-        check_shape(x, 'b c f h w', c = self.channels, f = self.num_frames, h = img_size, w = img_size)
+        b, device, img_size, = x.shape[0], x.device, self.settings.img_size
+        check_shape(x, 'b c f h w', c = self.settings.num_channel,
+            f = self.settings.num_slice, h = img_size, w = img_size)
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
         x = normalize_img(x)
         return self.p_losses(x, t, *args, **kwargs)

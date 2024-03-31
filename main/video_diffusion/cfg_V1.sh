@@ -8,4 +8,4 @@
 #SBATCH --qos=gpu_min24GB                                            # (Optional) 01.ctm-deep-05
 
 #Commands / scripts to run (e.g., python3 train.py)
-python3 main_V1.py
+python main.py

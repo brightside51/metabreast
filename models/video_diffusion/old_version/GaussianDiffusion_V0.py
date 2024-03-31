@@ -1,13 +1,12 @@
 '''GaussianDiffusion model based on https://github.com/lucidrains/video-diffusion-pytorch/'''
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 from util.unet3d_utils import *
 from einops import rearrange
-#from tqdm import tqdm
+from tqdm import tqdm
 
 from einops_exts import check_shape
 
@@ -22,7 +21,7 @@ class GaussianDiffusion(nn.Module):
         text_use_bert_cls = False,
         channels = 3,
         timesteps = 1000,
-        noise_type = 'gaussian',
+        loss_type = 'l1',
         use_dynamic_thres = False, # from the Imagen paper
         dynamic_thres_percentile = 0.9
     ):
@@ -40,7 +39,7 @@ class GaussianDiffusion(nn.Module):
 
         timesteps, = betas.shape
         self.num_timesteps = int(timesteps)
-        self.noise_type = noise_type
+        self.loss_type = loss_type
 
         # register buffer helper function that casts float64 to float32
 
@@ -127,10 +126,7 @@ class GaussianDiffusion(nn.Module):
     def p_sample(self, x, t, cond = None, cond_scale = 1., clip_denoised = True):
         b, *_, device = *x.shape, x.device
         model_mean, _, model_log_variance = self.p_mean_variance(x = x, t = t, clip_denoised = clip_denoised, cond = cond, cond_scale = cond_scale)
-        if self.noise_type == 'gaussian': noise = torch.randn_like(x).to(device)
-        elif self.noise_type == 'poisson': noise = torch.from_numpy(np.random.poisson(size = x.size)).to(device)
-        elif self.noise_type == 'gamma': noise = torch.from_numpy(np.random.gamma(x.shape)).to(device)
-        elif self.noise_type == 'rayleigh': noise = torch.from_numpy(np.random.rayleigh(0.1, x.shape)).type(torch.FloatTensor).to(device)
+        noise = torch.randn_like(x)
         # no noise when t == 0
         nonzero_mask = (1 - (t == 0).float()).reshape(b, *((1,) * (len(x.shape) - 1)))
         return model_mean + nonzero_mask * (0.5 * model_log_variance).exp() * noise
@@ -142,8 +138,7 @@ class GaussianDiffusion(nn.Module):
         b = shape[0]
         img = torch.randn(shape, device=device)
 
-        #for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
-        for i in reversed(range(0, self.num_timesteps)):
+        for i in tqdm(reversed(range(0, self.num_timesteps)), desc='sampling loop time step', total=self.num_timesteps):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long), cond = cond, cond_scale = cond_scale)
 
         return unnormalize_img(img)
@@ -172,8 +167,7 @@ class GaussianDiffusion(nn.Module):
         xt1, xt2 = map(lambda x: self.q_sample(x, t=t_batched), (x1, x2))
 
         img = (1 - lam) * xt1 + lam * xt2
-        #for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
-        for i in reversed(range(0, t)):
+        for i in tqdm(reversed(range(0, t)), desc='interpolation sample time step', total=t):
             img = self.p_sample(img, torch.full((b,), i, device=device, dtype=torch.long))
 
         return img
@@ -182,13 +176,13 @@ class GaussianDiffusion(nn.Module):
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         return (
-            extract(self.sqrt_alphas_cumprod, t, x_start.shape) * x_start +
-            extract(self.sqrt_one_minus_alphas_cumprod, t, x_start.shape) * noise
+            extract(self.sqrt_alphas_cumprod.to(x_start.device), t, x_start.shape) * x_start +
+            extract(self.sqrt_one_minus_alphas_cumprod.to(x_start.device), t, x_start.shape) * noise
         )
 
     def p_losses(self, x_start, t, cond = None, noise = None, **kwargs):
         b, c, f, h, w, device = *x_start.shape, x_start.device
-        noise = default(noise, lambda: torch.randn_like(x_start))
+        noise = default(noise, lambda: torch.randn_like(x_start)).to(device)
 
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
 
@@ -198,7 +192,13 @@ class GaussianDiffusion(nn.Module):
 
         x_recon = self.denoise_fn(x_noisy, t, cond = cond, **kwargs)
 
-        loss = F.mse_loss(noise, x_recon)
+        if self.loss_type == 'l1':
+            loss = F.l1_loss(noise, x_recon)
+        elif self.loss_type == 'l2':
+            loss = F.mse_loss(noise, x_recon)
+        else:
+            raise NotImplementedError()
+
         return loss
 
     def forward(self, x, *args, **kwargs):

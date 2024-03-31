@@ -1,21 +1,29 @@
-# Package Imports
 import os
 import sys
-import pathlib
-#import wandb
 import argparse
 import numpy as np
 import torch
-import tensorboard
-import matplotlib.pyplot as plt
 import time
 
-# Functionality Imports
-from pathlib import Path
-from torchinfo import summary
-from torch.utils.data import ConcatDataset
+sys.path.append('../../data/non_cond')
+from nc_data_reader import NCDataset
+sys.path.append('../../models/video_diffusion')
+from Unet3D import Unet3D
+from GaussianDiffusion import GaussianDiffusion
+from util.util import abrev
+sys.path.append('../../scripts/video_diffusion')
+from infer_script import Inferencer
+from train_script import Trainer
 
-# ============================================================================================
+from torch.utils.data import DataLoader, ConcatDataset
+from torchinfo import summary
+from tensorboardX import SummaryWriter
+#from data.dataset import get_training_set
+from pathlib import Path
+from matplotlib import pyplot as plt
+from matplotlib import image as mpimg
+
+'''-------------------------GPU presence/absence-------------------------'''
 
 # Non-Conditional 3D Diffusion Model Parser Initialization
 if True:
@@ -23,15 +31,12 @@ if True:
         description = "Non-Conditional 3D Diffusion Model")
     ncdiff_parser.add_argument('--model_type', type = str,            # Chosen Model / Diffusion
                                 choices =  {'video_diffusion',
-                                            'blackout_diffusion',
-                                            'gamma_diffusion'},
+                                            'blackout_diffusion'},
                                 default = 'video_diffusion')
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 2)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
                                 default = 1)
-    ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
-                                default = 'gamma')
     settings = ncdiff_parser.parse_args("")
 
     # ============================================================================================
@@ -53,10 +58,15 @@ if True:
                                 default = f'../../scripts/{settings.model_type}')
     ncdiff_parser.add_argument('--logs_folderpath', type = str,           # Path for Model Saving Directory
                                 default = f'../../logs/{settings.model_type}')
+    ncdiff_parser.add_argument('--verbose', type = bool,                  # Verbose Control Variable
+                                default = False)
         
     # ============================================================================================
 
     # Dataset | Dataset General Arguments
+    ncdiff_parser.add_argument('--data_format', type = str,           # Chosen Dataset Format for Reading
+                                choices =  {'mp4', 'dicom'},
+                                default = 'mp4')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
@@ -77,10 +87,14 @@ if True:
     # Dataset | DataLoader Arguments
     ncdiff_parser.add_argument('--batch_size', type = int,            # DataLoader Batch Size Value
                                 default = 1)
+    ncdiff_parser.add_argument('--num_fps', type = int,               # Number of Video Frames per Second
+                                default = 4)
     ncdiff_parser.add_argument('--shuffle', type = bool,              # DataLoader Subject Shuffling Control Value
                                 default = True)
     ncdiff_parser.add_argument('--num_workers', type = int,           # Number of DataLoader Workers
                                 default = 8)
+    ncdiff_parser.add_argument('--prefetch_factor', type = int,       # Number of Prefetched DataLoader Batches per Worker
+                                default = 1)
 
     # ============================================================================================
 
@@ -95,107 +109,135 @@ if True:
                                 default = (1, 2, 4, 8))
 
     # Model | Training & Diffusion Arguments
-    #ncdiff_parser.add_argument('--num_epochs', type = int,            # Number of Training Epochs
+    ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
+                                default = 'gaussian')
+    #ncdiff_parser.add_argument('--num_epochs', type = int,           # Number of Training Epochs
     #                            default = 30)
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
-                                default = 300)
+                                default = 500)
     ncdiff_parser.add_argument('--num_steps', type = int,             # Number of Diffusion Training Steps
-                                default = 500000)
+                                default = 150000)
     ncdiff_parser.add_argument('--lr_base', type = float,             # Base Learning Rate Value
                                 default = 1e-4)
+    ncdiff_parser.add_argument('--lr_decay', type = float,            # Learning Rate Decay Value
+                                default = 0.999)
+    ncdiff_parser.add_argument('--lr_step', type = float,             # Number of Steps inbetween Learning Rate Decay
+                                default = 250)
+    ncdiff_parser.add_argument('--lr_min', type = float,              # Minimum Decayed Learning Rate Value
+                                default = 1e-6)
+    
+    # Model | Result Logging Arguments 
     ncdiff_parser.add_argument('--save_interval', type = int,         # Number of Training Step Interval inbetween Image Saving
-                                default = 1000)
-    ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
-                                default = 1)
+                                default = 500)
+    #ncdiff_parser.add_argument('--log_interval', type = int,          # Number of Training Step Interval inbetween Result Logging (not a joke i swear...)
+    #                           default = 1)
     ncdiff_parser.add_argument('--save_img', type = int,              # Square Root of Number of Images Saved for Manual Evaluation
                                 default = 2)
+    ncdiff_parser.add_argument('--log_method', type = str,            # Metric Logging Methodology
+                                choices = {'wandb', 'tensorboard', None},
+                                default = 'tensorboard')
 
     # ============================================================================================
 
     settings = ncdiff_parser.parse_args("")
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
-#wandb.init( project = "MetaBreast", name = f"{settings.model_type}/V{settings.model_version}")
 
-# --------------------------------------------------------------------------------------------
+'''-------------------------Dataset-parameters-------------------------'''
+goDo = 'train' # train, infer, showData
 
-# Functionality Imports
-print(f"Video Diffusion Model | V{settings.model_version} | {settings.noise_type} Noise")
-sys.path.append(settings.reader_folderpath)
-from nc_data_reader import NCDataset
-sys.path.append(settings.model_folderpath)
-from Unet3D import Unet3D
-from GaussianDiffusion import GaussianDiffusion
-sys.path.append(settings.script_folderpath)
-from infer_script import Inferencer
-from train_script import Trainer
+if goDo == 'train':
 
-# ============================================================================================
-# ====================================== Training Setup ======================================
-# ============================================================================================
+    # Dataset Access
+    print('PID:' + str(os.getpid()))
+    private_dataset = NCDataset(settings,
+                                mode = 'train',
+                                dataset = 'private')
+    public_dataset = NCDataset( settings,
+                                mode = 'train',
+                                dataset = 'public')
+    dataset = ConcatDataset([private_dataset, public_dataset])
 
-# Dataset Access
+    # Model and Diffusion Initialization
+    model = Unet3D(
+        dim = settings.dim,
+        channels = settings.num_channel,
+        dim_mults = settings.mult_dim)
 
-private_dataset = NCDataset(settings,
-                            mode = 'train',
-                            dataset = 'private')
-public_dataset = NCDataset( settings,
-                            mode = 'train',
-                            dataset = 'public')
-dataset = ConcatDataset([private_dataset, public_dataset])
-#del public_dataset, private_dataset
+    diffusion = GaussianDiffusion(
+        model, image_size = settings.img_size,
+        num_frames = settings.num_slice,
+        channels = settings.num_channel,
+        noise_type = settings.noise_type,
+        timesteps = settings.num_ts).to(settings.device)
+    
+    # Training Script Initialization
+    trainer = Trainer(
+        diffusion, dataset, settings,
+        train_batch_size = settings.batch_size,
+        train_lr = settings.lr_base,
+        save_and_sample_every = settings.save_interval,
+        train_num_steps = settings.num_steps,
+        gradient_accumulate_every = 2,
+        ema_decay = 0.995, amp = True,
+        results_folder = os.path.join(settings.logs_folderpath, f"V{settings.model_version}"))
 
-# --------------------------------------------------------------------------------------------
+    start = time.time()
+    trainer.train(run = f"V{settings.model_version}")
+    end = time.time()
 
-# Model & Diffusion Process Initialization
-model = Unet3D(             dim = settings.dim,
-                            channels = settings.num_channel,
-                            dim_mults = settings.mult_dim)
-diff = GaussianDiffusion(   model, timesteps = settings.num_ts,
-                            noise_type = settings.noise_type,
-                            image_size = settings.img_size,
-                            num_frames = settings.num_slice,
-                            channels = settings.num_channel)
+    print(f"Training time: {(end - start)/60}")
 
-# Diffusion Application
-"""
-diff_summary = summary(     diff,
-                        (1, settings.num_channel,
-                            settings.num_slice,
-                            settings.img_size,
-                            settings.img_size))
-"""
+elif goDo == 'infer':
+    print("Going to infer new data...")
 
-# Model Trainer Initialization
-trainer = Trainer(  diff, dataset, settings = settings,
-                    device = settings.device,
-                    shuffle = settings.shuffle,
-                    train_batch_size = settings.batch_size,
-                    train_lr = settings.lr_base,
-                    train_num_steps = settings.num_steps,
-                    gradient_accumulate_every = 2,
-                    ema_decay = 0.995, amp = True,
-                    num_sample_rows = settings.save_img,
-                    results_folder = f"{settings.logs_folderpath}/V{settings.model_version}")
+    model = Unet3D(
+        dim = 64,
+        channels = 1,
+        dim_mults = (1, 2, 4, 8),
+    )
 
-# Model Trainer Application
-time_start = time.time()
-trainer.train(run = f'save_V{settings.model_version}')
-time_end = time.time()
-print(f"Time Duration: {(time_end - time_start) / 60}")
+    diffusion = GaussianDiffusion(
+        model,
+        image_size = img_size,
+        num_frames = num_frames,
+        channels = 1,
+        timesteps = 500,   # number of steps
+        loss_type = 'l1'    # L1 or L2
+    ).cuda()
 
-# ============================================================================================
-# ====================================== Inference Setup =====================================
-# ============================================================================================
+    inferencer = Inferencer(
+        diffusion,
+        model_path = os.path.join(modelSaveDir,"model-S128_30_100K.pt"),
+        output_path = os.path.join(os.getcwd(),"synth_samples_128"),
+        num_samples = 20,
+        img_size = img_size)
+    
+    inferencer.infer_new_data()
 
-"""
-# Model Inference Mode
-infer = Inferencer( diff,
-                    model_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/model-save_V{settings.model_version}.pt"),
-                    output_path = Path(f"{settings.logs_folderpath}/V{settings.model_version}/gen_img"),
-                    num_samples = 20, img_size = settings.img_size, num_slice = settings.num_slice)
-infer.infer_new_data()
-"""
+    print("Finished infering new data")
 
-# Running Commands
-#srun -p debug_8GB -q debug_8GB python video_diffusion_main.py
-#wandb.finish()
+elif goDo == 'showData':
+    print("Going to show data...")
+
+    public_set = get_training_set(publicSetDir, img_size=64, num_frames=num_frames)
+    private_set = get_training_set(privateSetDir, img_size=64, num_frames=num_frames)
+  
+    concat_set = ConcatDataset([public_set, private_set])
+
+    print("Private Dataset length", private_set.__len__()) # 89
+    print("Public Dataset length", public_set.__len__())   # 768
+    print("Total Dataset length", concat_set.__len__())    # 857
+
+    # for i in range(30):
+    #     mri_example = train_set.__getitem__(i)
+    #     print(mri_example.size())
+    
+    for i in range(0,900):
+        mri_example = concat_set.__getitem__(i)
+        print(i)
+        # for f in range(num_frames):
+        #     plt.title("Example Image") 
+        #     image = mri_example[0][f].cpu().detach().numpy()
+        #     plt.imshow(image)
+        #     plt.savefig(os.path.join(os.getcwd(),'check_data','frame'+str(f)+'.png'))
+

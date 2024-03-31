@@ -40,14 +40,14 @@ class Inferencer(object):
                     out = out.transpose((1, 2, 3, 0))
 
                     out *= 255.0/out.max() 
-                    if(not os.path.exists(os.path.join(self.output_path, "sample_"+str(i)))):
-                        os.mkdir(os.path.join(self.output_path, "sample_"+str(i)))
+                    #if(not os.path.exists(os.path.join(self.output_path, "sample_"+str(i)))):
+                    #    os.mkdir(os.path.join(self.output_path, "sample_"+str(i)))
 
                     out = (np.concatenate([out, out, out], axis=3))
                     
-                    for frame in range(self.num_slice):
-                        im = Image.fromarray(out[frame].astype(np.uint8))
-                        im.save(os.path.join(self.output_path, "sample_"+str(i),str(frame)+".png"))
+                    #for frame in range(self.num_slice):
+                        #im = Image.fromarray(out[frame].astype(np.uint8))
+                        #im.save(os.path.join(self.output_path, "sample_"+str(i),str(frame)+".png"))
 
                     io.vwrite(f'{self.output_path}/sample_{i}.gif', out)
                     
