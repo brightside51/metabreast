@@ -1,0 +1,33 @@
+ckpt: null
+command: python main.py --config configs/smmnist_DDPM_big5_lite.yml --data_path ../../../datasets/private/METABREST/T1W_Breast/video_data
+  --exp mcvd_V0 --ni
+comment: ''
+config: configs/smmnist_DDPM_big5_lite.yml
+config_mod: []
+data_path: ../../../datasets/private/METABREST/T1W_Breast/video_data
+end_ckpt: null
+exp: mcvd_V0
+fast_fid: false
+feats_dir: /nas-ctm01/homes/pfsousa/MCVD/datasets
+fid_batch_size: 1000
+fid_num_samples: null
+final_only: null
+freq: null
+image_folder: images
+interact: false
+log_path: mcvd_V0/logs
+ni: true
+no_ema: false
+no_pr: false
+pr_nn_k: null
+resume_training: false
+sample: false
+seed: 1234
+start_at: 0
+stats_dir: /nas-ctm01/homes/pfsousa/MCVD/datasets
+stats_download: false
+subsample: null
+test: false
+verbose: info
+video_folder: videos
+video_gen: false
