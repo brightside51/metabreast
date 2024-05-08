@@ -50,6 +50,9 @@ if True:
     ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
                                 #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
                                 default = '../../../../../datasets/private/METABREST/T1W_Breast')
+    ncdiff_parser.add_argument( '--lung_data_folderpath', type = str,     # Path for LUCAS Dataset Directory
+                                #default = "X:/nas-ctm01/datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI")
+                                default = "../../../../../datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI")
 
     # Directory | Model-Related Path Arguments
     ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
@@ -71,6 +74,12 @@ if True:
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
                                 default = 30)
+    ncdiff_parser.add_argument('--slice_spacing', type = bool,        # Usage of Linspace for Slice Spacing
+                                default = True)
+    ncdiff_parser.add_argument('--slice_bottom_margin', type = int,   # Number of 2D Slices to be Discarded in Bottom Margin
+                                default = 5)
+    ncdiff_parser.add_argument('--slice_top_margin', type = int,      # Number of 2D Slices to be Discarded in Top Margin
+                                default = 15)
     ncdiff_parser.add_argument('--data_prep', type = bool,            # Usage of Dataset Pre-Processing Control Value
                                 default = True)
     ncdiff_parser.add_argument('--h_flip', type = int,                # Percentage of Horizontally Flipped Subjects
@@ -110,7 +119,7 @@ if True:
 
     # Model | Training & Diffusion Arguments
     ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
-                                default = 'rayleigh')
+                                default = 'gaussian')
     #ncdiff_parser.add_argument('--num_epochs', type = int,           # Number of Training Epochs
     #                            default = 30)
     ncdiff_parser.add_argument('--num_ts', type = int,                # Number of Scheduler Timesteps
@@ -149,14 +158,9 @@ if goDo == 'train':
 
     # Dataset Access
     print('PID:' + str(os.getpid()))
-    private_dataset = NCDataset(settings,
-                                mode = 'train',
-                                dataset = 'private')
-    public_dataset = NCDataset( settings,
-                                mode = 'train',
-                                dataset = 'public')
-    dataset = ConcatDataset([private_dataset, public_dataset])
-
+    dataset = NCDataset(settings,
+                        mode = 'train',
+                        dataset = 'lung')
     # Model and Diffusion Initialization
     model = Unet3D(
         dim = settings.dim,

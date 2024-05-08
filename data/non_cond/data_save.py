@@ -1,13 +1,10 @@
 # Package Imports
 import sys
+import os
 import argparse
 import torch
-import torchvision
-import matplotlib.pyplot as plt
-import time
-
-# Functionality Imports
-
+#import matplotlib.pyplot as plt
+from pathlib import Path
 
 # ============================================================================================
 
@@ -34,11 +31,14 @@ if True:
     ncdiff_parser.add_argument('--reader_folderpath', type = str,         # Path for Dataset Reader Directory
                                 default = '../../data/non_cond')
     ncdiff_parser.add_argument('--public_data_folderpath', type = str,    # Path for Private Dataset Directory
-                                default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
-                                #default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                #default = "X:/nas-ctm01/datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
+                                default = "../../../../../datasets/public/MEDICAL/Duke-Breast-Cancer-T1")
     ncdiff_parser.add_argument('--private_data_folderpath', type = str,   # Path for Private Dataset Directory
-                                default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
-                                #default = '../../../../../datasets/private/METABREST/T1W_Breast')
+                                #default = "X:/nas-ctm01/datasets/private/METABREST/T1W_Breast")
+                                default = '../../../../../datasets/private/METABREST/T1W_Breast')
+    ncdiff_parser.add_argument( '--lung_data_folderpath', type = str,     # Path for LUCAS Dataset Directory
+                                #default = "X:/nas-ctm01/datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI")
+                                default = "../../../../../datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI")
 
     # Directory | Model-Related Path Arguments
     ncdiff_parser.add_argument('--model_folderpath', type = str,          # Path for Model Architecture Directory
@@ -53,11 +53,17 @@ if True:
     # Dataset | Dataset General Arguments
     ncdiff_parser.add_argument('--data_format', type = str,           # Chosen Dataset Format for Reading
                                 choices =  {'mp4', 'dicom'},
-                                default = 'mp4')
+                                default = 'dicom')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
                                 default = 64)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
                                 default = 30)
+    ncdiff_parser.add_argument('--slice_spacing', type = bool,        # Usage of Linspace for Slice Spacing
+                                default = True)
+    ncdiff_parser.add_argument('--slice_bottom_margin', type = int,   # Number of 2D Slices to be Discarded in Bottom Margin
+                                default = 5)
+    ncdiff_parser.add_argument('--slice_top_margin', type = int,      # Number of 2D Slices to be Discarded in Top Margin
+                                default = 15)
     ncdiff_parser.add_argument('--data_prep', type = bool,            # Usage of Dataset Pre-Processing Control Value
                                 default = True)
     ncdiff_parser.add_argument('--h_flip', type = int,                # Percentage of Horizontally Flipped Subjects
@@ -113,20 +119,16 @@ if True:
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 # Functionality Imports
-#sys.path.append(settings.reader_folderpath)
+sys.path.append(settings.reader_folderpath)
 from nc_data_reader import NCDataset
 
 # ============================================================================================
 
 # Dataset Saving Example
-private_dataset = NCDataset(settings,
+lung_dataset = NCDataset(   settings,
                             mode = 'train',
-                            dataset = 'private')
-#public_dataset = NCDataset( settings,
-#                            mode = 'train',
-#                            dataset = 'public')
-data = private_dataset.__getitem__(0)
-#print(data.shape)
-print(data.shape)
+                            dataset = 'lung')
+#data = lung_dataset.__getitem__(0, save = True)
 #print(data.shape); print(torch.max(data)); print(torch.min(data))
-#for i in range(16, len(public_dataset)): public_dataset.__getitem__(i, save = True)
+subj_filelist = os.listdir(Path("X:/nas-ctm01/datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI/video_data/V1/train"))
+for i in range(len(subj_filelist), len(lung_dataset)): lung_dataset.__getitem__(i, save = True)
