@@ -3,6 +3,7 @@ import sys
 import os
 import argparse
 import torch
+import pandas as pd
 #import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -20,7 +21,7 @@ if True:
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 0)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
-                                default = 3)
+                                default = 1)
     ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
                                 default = 'gaussian')
     settings = ncdiff_parser.parse_args("")
@@ -126,11 +127,12 @@ from nc_data_reader import NCDataset
 
 # Dataset Saving Example
 dataset = NCDataset(settings,
-                    mode = 'test',
-                    dataset = 'public')
-for i in range(0, len(dataset)):
-    data = dataset.__getitem__(i, save = True)
-    print(f"{i} -> {data.shape}\n")
-#print(data.shape); print(torch.max(data)); print(torch.min(data))
-#subj_filelist = os.listdir(Path("X:/nas-ctm01/datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI/video_data/V3/train"))
-#for i in range(len(subj_filelist), len(dataset)): dataset.__getitem__(i, save = True)
+                    mode = 'train',
+                    dataset = 'private')
+acq_time = dict()
+for i in range(len(dataset)):
+    info = dataset.__getitem__(i)
+    print(info[0x0010, 0x0010].value)
+    acq_time[info[0x0010, 0x0010].value] = int(info[0x0008, 0x0022].value)
+df = pd.DataFrame(data = acq_time, index=[0])
+df.to_excel('acquisition.xlsx')
