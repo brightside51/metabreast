@@ -34,9 +34,9 @@ if True:
                                             'blackout_diffusion'},
                                 default = 'video_diffusion')
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
-                                default = 3)
+                                default = 4)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
-                                default = 1)
+                                default = 3)
     settings = ncdiff_parser.parse_args("")
 
     # ============================================================================================
@@ -71,7 +71,7 @@ if True:
                                 choices =  {'mp4', 'dicom'},
                                 default = 'mp4')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
-                                default = 64)
+                                default = 128)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
                                 default = 30)
     ncdiff_parser.add_argument('--slice_spacing', type = bool,        # Usage of Linspace for Slice Spacing
@@ -111,7 +111,7 @@ if True:
     ncdiff_parser.add_argument('--seed', type = int,                  # Randomised Generational Seed
                                 default = 0)
     ncdiff_parser.add_argument('--dim', type = int,                   # Input Dimensionality (Not Necessary)
-                                default = 64)
+                                default = 128)
     ncdiff_parser.add_argument('--num_channel', type = int,           # Number of Input Channels for Dataset
                                 default = 1)
     ncdiff_parser.add_argument('--mult_dim', type = tuple,            # Dimensionality for all Conditional Layers
@@ -158,9 +158,14 @@ if goDo == 'train':
 
     # Dataset Access
     print('PID:' + str(os.getpid()))
-    dataset = NCDataset(settings,
-                        mode = 'train',
-                        dataset = 'lung')
+    private_dataset = NCDataset(settings,
+                                mode = 'train',
+                                dataset = 'private')
+    public_dataset = NCDataset( settings,
+                                mode = 'train',
+                                dataset = 'public')
+    dataset = ConcatDataset([private_dataset, public_dataset])
+    
     # Model and Diffusion Initialization
     model = Unet3D(
         dim = settings.dim,
@@ -198,6 +203,7 @@ elif goDo == 'infer':
         dim = settings.dim,
         channels = settings.num_channel,
         dim_mults = settings.mult_dim)
+    print("model")
 
     diffusion = GaussianDiffusion(
         model, image_size = settings.img_size,
@@ -205,13 +211,15 @@ elif goDo == 'infer':
         channels = settings.num_channel,
         noise_type = settings.noise_type,
         timesteps = settings.num_ts).to(settings.device)
-                                        
+    print("diffusion")
+
     inferencer = Inferencer(
         diffusion,
         model_path = os.path.join(settings.logs_folderpath, f"V{settings.model_version}/model.pt"),
         output_path = os.path.join(settings.logs_folderpath, f"V{settings.model_version}/sample"),
         num_samples = 200, img_size = settings.img_size)
-    
+    print("inferencer")
+
     inferencer.infer_new_data()
 
     print("Finished infering new data")

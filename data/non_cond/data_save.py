@@ -20,7 +20,7 @@ if True:
     ncdiff_parser.add_argument('--model_version', type = int,         # Model Version Index
                                 default = 0)
     ncdiff_parser.add_argument('--data_version', type = int,          # Dataset Version Index
-                                default = 3)
+                                default = 5)
     ncdiff_parser.add_argument('--noise_type', type = str,            # Diffusion Noise Distribution
                                 default = 'gaussian')
     settings = ncdiff_parser.parse_args("")
@@ -55,7 +55,7 @@ if True:
                                 choices =  {'mp4', 'dicom'},
                                 default = 'dicom')
     ncdiff_parser.add_argument('--img_size', type = int,              # Generated Image Resolution
-                                default = 128)
+                                default = 512)
     ncdiff_parser.add_argument('--num_slice', type = int,             # Number of 2D Slices in MRI
                                 default = 30)
     ncdiff_parser.add_argument('--slice_spacing', type = bool,        # Usage of Linspace for Slice Spacing
@@ -125,12 +125,22 @@ from nc_data_reader import NCDataset
 # ============================================================================================
 
 # Dataset Saving Example
-dataset = NCDataset(settings,
-                    mode = 'test',
-                    dataset = 'public')
-for i in range(0, len(dataset)):
-    data = dataset.__getitem__(i, save = True)
+print("Starting")
+public_dataset = NCDataset( settings,
+                            mode = 'train',
+                            dataset = 'public')
+print(len(public_dataset))
+private_dataset = NCDataset(settings,
+                            mode = 'train',
+                            dataset = 'private')
+print(len(private_dataset))
+for i in range(0, len(public_dataset)):
+    data = public_dataset.__getitem__(i, save = True)
     print(f"{i} -> {data.shape}\n")
+for i in range(0, len(private_dataset)):
+    data = private_dataset.__getitem__(i, save = True)
+    print(f"{i} -> {data.shape}\n")
+
 #print(data.shape); print(torch.max(data)); print(torch.min(data))
 #subj_filelist = os.listdir(Path("X:/nas-ctm01/datasets/private/LUCAS/lidc/TCIA_LIDC-IDRI_20200921/LIDC-IDRI/video_data/V3/train"))
 #for i in range(len(subj_filelist), len(dataset)): dataset.__getitem__(i, save = True)

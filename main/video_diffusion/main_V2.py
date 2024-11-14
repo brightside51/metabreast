@@ -146,7 +146,7 @@ if True:
     settings.device = torch.device('cuda:0' if torch.cuda.is_available() else "cpu")
 
 '''-------------------------Dataset-parameters-------------------------'''
-goDo = 'train' # train, infer, showData
+goDo = 'infer' # train, infer, showData
 
 if goDo == 'train':
 
@@ -194,26 +194,22 @@ elif goDo == 'infer':
     print("Going to infer new data...")
 
     model = Unet3D(
-        dim = 64,
-        channels = 1,
-        dim_mults = (1, 2, 4, 8),
-    )
+        dim = settings.dim,
+        channels = settings.num_channel,
+        dim_mults = settings.mult_dim)
 
     diffusion = GaussianDiffusion(
-        model,
-        image_size = img_size,
-        num_frames = num_frames,
-        channels = 1,
-        timesteps = 500,   # number of steps
-        loss_type = 'l1'    # L1 or L2
-    ).cuda()
-
+        model, image_size = settings.img_size,
+        num_frames = settings.num_slice,
+        channels = settings.num_channel,
+        noise_type = settings.noise_type,
+        timesteps = settings.num_ts).to(settings.device)
+                                        
     inferencer = Inferencer(
         diffusion,
-        model_path = os.path.join(modelSaveDir,"model-S128_30_100K.pt"),
-        output_path = os.path.join(os.getcwd(),"synth_samples_128"),
-        num_samples = 20,
-        img_size = img_size)
+        model_path = os.path.join(settings.logs_folderpath, f"V{settings.model_version}/model.pt"),
+        output_path = os.path.join(settings.logs_folderpath, f"V{settings.model_version}/sample"),
+        num_samples = 200, img_size = settings.img_size)
     
     inferencer.infer_new_data()
 

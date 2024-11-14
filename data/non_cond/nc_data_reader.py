@@ -39,6 +39,7 @@ class NCDataset(Dataset):
         # Subject Indexing (Existing or New Version)
         subj_listpath = Path(f"{self.settings.reader_folderpath}/V{self.settings.data_version}" +\
                              f"/{self.dataset}_{self.mode}_setV{self.settings.data_version}.txt")
+        print(subj_listpath)
         if subj_listpath.exists():
             print(f"Reading {self.dataset} Dataset Save Files for {self.mode} Set | Version {settings.data_version}")
             self.subj_list = subj_listpath.read_text().splitlines()
